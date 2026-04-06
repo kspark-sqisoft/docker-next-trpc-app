@@ -1,0 +1,65 @@
+# 개발: 소스 마운트 + next dev (핫 리로드)
+# 사용: docker compose -f docker-compose.dev.yml up --build
+# 운영 compose 와 프로젝트 이름을 분리합니다.
+name: docker-next-trpc-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: next-trpc-db-dev
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-board}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-board}
+      POSTGRES_DB: ${DB_NAME:-board}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: next-trpc-app-dev
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+      # 볼륨 마운트에서 파일 변경 감지(HMR). next.config.ts 의 watchOptions.pollIntervalMs 와 함께 사용
+      DOCKER_DEV: "1"
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-board}
+      DB_PASSWORD: ${DB_PASSWORD:-board}
+      DB_NAME: ${DB_NAME:-board}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev_only_nextauth_secret_min_32_chars_long!!}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      UPLOADS_DIR: /app/uploads
+      # 게시판 무한 스크롤 다음 페이지 지연(ms). 끄려면 0
+      LIST_INFINITE_LEARNING_DELAY_MS: ${LIST_INFINITE_LEARNING_DELAY_MS:-800}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - app_uploads_dev:/app/uploads
+      # .next 를 별도 볼륨으로 쪼개면 Turbopack 이 /app/.next-internal 등을 감시할 때 ENOENT·HMR 실패가 난다.
+      # 개발에서는 .next 를 프로젝트(바인드 마운트) 아래에 둔다. Windows 에서 캐시 쓰기 EIO 로그가 나올 수 있음.
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data_dev:
+  app_uploads_dev:
