@@ -3,6 +3,7 @@
  */
 import { relations, sql } from "drizzle-orm";
 import {
+  boolean,
   jsonb,
   pgTable,
   text,
@@ -25,6 +26,7 @@ export const users = pgTable("users", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
+  todos: many(todos),
 }));
 
 /** imageUrls: 공개 URL 문자열 배열(JSON). author 삭제 시 authorId 는 null 로 둠 */
@@ -48,6 +50,26 @@ export const postsRelations = relations(posts, ({ one }) => ({
   }),
 }));
 
+/** 로그인 사용자별 할 일. 계정 삭제 시 함께 삭제 */
+export const todos = pgTable("todos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: varchar("title", { length: 500 }).notNull(),
+  completed: boolean("completed").notNull().default(false),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const todosRelations = relations(todos, ({ one }) => ({
+  user: one(users, {
+    fields: [todos.userId],
+    references: [users.id],
+  }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Post = typeof posts.$inferSelect;
+export type Todo = typeof todos.$inferSelect;

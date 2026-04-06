@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 // 좌측 고정 네비 항목
 const nav = [
   { href: "/posts", label: "게시판" },
+  { href: "/todos", label: "할 일" },
   { href: "/profile", label: "프로필" },
 ];
 

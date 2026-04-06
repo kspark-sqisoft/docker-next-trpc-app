@@ -12,6 +12,9 @@ export const STALE_POST_DETAIL_MS = 2 * 60_000;
 /** 로그인 사용자 프로필: 세션과 함께 쓰이며 이름/아바타 변경 시 invalidate */
 export const STALE_AUTH_ME_MS = 60_000;
 
+/** 할 일 목록: 생성·토글·삭제 시 invalidate, 탭 이동 시 재요청 완화 */
+export const STALE_TODO_LIST_MS = 60_000;
+
 /** 비활성 쿼리 메모리 보관(기본) */
 export const GC_TIME_DEFAULT_MS = 15 * 60_000;
 
