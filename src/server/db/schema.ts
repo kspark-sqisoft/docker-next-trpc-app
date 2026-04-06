@@ -1,5 +1,6 @@
 /**
  * Drizzle 스키마(Postgres). npm run db:push 로 DB에 반영.
+ * @see README §8 (Drizzle 개념·코드 조각)
  */
 import { relations, sql } from "drizzle-orm";
 import {
