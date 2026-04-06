@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
+import { useIntersectionInfiniteScroll } from "@/hooks/use-intersection-infinite-scroll";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -17,20 +18,16 @@ import {
   GC_TIME_INFINITE_MS,
   STALE_POST_LIST_MS,
 } from "@/lib/query-cache";
+import { POST_LIST_PAGE_SIZE } from "@/lib/post-list-config";
 import { api } from "@/trpc/react";
-
-// 서버 listInfinite 한 번에 가져올 행 수(커서 페이지 크기)
-const PAGE_SIZE = 10;
 
 export function PostListClient() {
   // NextAuth 세션 상태(로그인 시 글쓰기 버튼 표시)
   const { status } = useSession();
-  // 스크롤 감지용 맨 아래 표식 DOM
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // 첫 페이지는 Suspense가 기다림, 이후는 fetchNextPage로 페이지 누적
   const [data, query] = api.post.listInfinite.useSuspenseInfiniteQuery(
-    { limit: PAGE_SIZE },
+    { limit: POST_LIST_PAGE_SIZE },
     {
       staleTime: STALE_POST_LIST_MS,
       gcTime: GC_TIME_INFINITE_MS,
@@ -44,27 +41,18 @@ export function PostListClient() {
   // pages 배열을 한 줄 목록으로 펼침(화면에는 전체 누적 글)
   const items = data.pages.flatMap((p) => p.items);
 
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
+  const onScrollFetch = useCallback(() => {
+    actionLog("posts-list", "스크롤: 목록 다음 페이지 로드");
+    flowLog("posts-list", "fetchNextPage()");
+  }, []);
 
-    // 뷰포트와 겹치면 콜백 호출 → 무한 스크롤 트리거
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (!first?.isIntersecting) return;
-        if (!hasNextPage || isFetchingNextPage) return;
-        actionLog("posts-list", "스크롤: 목록 다음 페이지 로드");
-        flowLog("posts-list", "fetchNextPage()");
-        void fetchNextPage();
-      },
-      // root=null 은 브라우저 창 기준, rootMargin 으로 바닥 도달 전에 미리 로드
-      { root: null, rootMargin: "200px", threshold: 0 },
-    );
-
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  const sentinelRef = useIntersectionInfiniteScroll({
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    rootMargin: "200px",
+    onIntersect: onScrollFetch,
+  });
 
   return (
     <PageShell
