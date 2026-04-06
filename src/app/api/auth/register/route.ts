@@ -14,7 +14,7 @@ import {
 } from "@/server/services/users";
 
 const bodySchema = z.object({
-  email: z.string().email().max(320),
+  email: z.email().max(320),
   password: z.string().min(8).max(128),
   name: z.string().min(1).max(100),
 });
