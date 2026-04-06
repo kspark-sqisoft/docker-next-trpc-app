@@ -16,7 +16,8 @@ import {
 } from "@/server/services/posts";
 import { protectedProcedure, publicProcedure, router } from "@/server/trpc/trpc";
 
-const uuid = z.string().uuid();
+/** 게시글 PK — Zod 4 권장 `z.uuid()` (구 `z.string().uuid()` 대체) */
+const postIdSchema = z.uuid();
 
 /**
  * 무한 스크롤에서 2페이지부터만 인위 지연(학습용: 로딩 UI·네트워크 확인).
@@ -63,7 +64,7 @@ export const postRouter = router({
     }),
 
   /** 단건: 없으면 NOT_FOUND */
-  byId: publicProcedure.input(z.object({ id: uuid })).query(async ({ input }) => {
+  byId: publicProcedure.input(z.object({ id: postIdSchema })).query(async ({ input }) => {
     const post = await findOne(input.id);
     if (!post) {
       throw new TRPCError({ code: "NOT_FOUND", message: "글을 찾을 수 없습니다." });
@@ -94,7 +95,7 @@ export const postRouter = router({
   update: protectedProcedure
     .input(
       z.object({
-        id: uuid,
+        id: postIdSchema,
         title: z.string().min(1).max(200).optional(),
         content: z.string().min(1).optional(),
         imageUrls: z.array(z.string()).max(5).optional(),
@@ -114,6 +115,6 @@ export const postRouter = router({
 
   // 첨부 파일 디스크 삭제 포함
   delete: protectedProcedure
-    .input(z.object({ id: uuid }))
+    .input(z.object({ id: postIdSchema }))
     .mutation(({ ctx, input }) => removePost(input.id, ctx.user.id)),
 });

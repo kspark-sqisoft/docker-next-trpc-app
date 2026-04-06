@@ -1,12 +1,13 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- 사용자 업로드 동적 URL */
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useActionState, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import type { inferRouterOutputs } from "@trpc/server";
 import { QueryErrorBoundary } from "@/components/error-boundary/query-error-boundary";
 import { RequireAuth } from "@/components/require-auth";
 import { ProfileSkeleton } from "@/components/scaffold/profile-skeleton";
+import { FormSubmitButton } from "@/components/forms/form-submit-button";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -45,31 +46,32 @@ function ProfileNameForm({
   initialName: string;
   updateNameMut: {
     mutateAsync: (input: { name: string }) => Promise<AuthMe>;
-    isPending: boolean;
   };
 }) {
-  const [name, setName] = useState(initialName);
-  const [nameErr, setNameErr] = useState<string | null>(null);
+  const [nameErr, formAction] = useActionState(
+    async (
+      _prev: string | null,
+      formData: FormData,
+    ): Promise<string | null> => {
+      const name = String(formData.get("name") ?? "").trim();
+      try {
+        await updateNameMut.mutateAsync({ name });
+        return null;
+      } catch (er) {
+        return er instanceof Error ? er.message : "저장 실패";
+      }
+    },
+    null,
+  );
 
   return (
-    <form
-      className="space-y-3"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setNameErr(null);
-        try {
-          await updateNameMut.mutateAsync({ name });
-        } catch (er) {
-          setNameErr(er instanceof Error ? er.message : "저장 실패");
-        }
-      }}
-    >
+    <form className="space-y-3" action={formAction}>
       <div className="space-y-2">
         <Label htmlFor="name">표시 이름</Label>
         <Input
           id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          name="name"
+          defaultValue={initialName}
           maxLength={100}
           required
         />
@@ -77,9 +79,9 @@ function ProfileNameForm({
       {nameErr ? (
         <p className="text-destructive text-sm">{nameErr}</p>
       ) : null}
-      <Button type="submit" size="sm" disabled={updateNameMut.isPending}>
-        {updateNameMut.isPending ? "저장 중…" : "이름 저장"}
-      </Button>
+      <FormSubmitButton size="sm" pendingLabel="저장 중…">
+        이름 저장
+      </FormSubmitButton>
     </form>
   );
 }

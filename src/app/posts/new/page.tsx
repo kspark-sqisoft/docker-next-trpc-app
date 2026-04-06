@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { PostImageAttachments } from "@/components/posts/post-image-attachments";
 import { RequireAuth } from "@/components/require-auth";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/forms/form-submit-button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/trpc/react";
 
+type PostFormState = { error: string | null };
+
 export default function PostNewPage() {
-  // 비로그인이면 /login 으로 보내는 래퍼
   return (
     <RequireAuth>
       <PostNewForm />
@@ -28,19 +30,50 @@ function PostNewForm() {
   const utils = api.useUtils();
   const create = api.post.create.useMutation({
     onSuccess: async (post) => {
-      // 새 글이 목록에 반영되도록 무한쿼리 갱신
       await utils.post.listInfinite.invalidate();
       router.push(`/posts/${post.id}`);
     },
   });
 
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  // 이미지 업로드 중에는 제출 버튼도 막기 위한 플래그
   const [busy, setBusy] = useState(false);
 
-  // RequireAuth 이후에도 클라이언트 세션 동기화 전 잠깐 비어 있을 수 있음
+  const [state, formAction, isPending] = useActionState(
+    async (
+      _prev: PostFormState,
+      formData: FormData,
+    ): Promise<PostFormState> => {
+      const title = String(formData.get("title") ?? "");
+      const content = String(formData.get("content") ?? "");
+      let parsedUrls: string[] = [];
+      try {
+        const raw = formData.get("imageUrls");
+        if (raw != null && String(raw) !== "") {
+          const v = JSON.parse(String(raw)) as unknown;
+          if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
+            return { error: "첨부 정보가 올바르지 않습니다." };
+          }
+          parsedUrls = v;
+        }
+      } catch {
+        return { error: "첨부 정보가 올바르지 않습니다." };
+      }
+      try {
+        await create.mutateAsync({
+          title,
+          content,
+          imageUrls: parsedUrls.length > 0 ? parsedUrls : undefined,
+        });
+        return { error: null };
+      } catch (e) {
+        return {
+          error: e instanceof Error ? e.message : "저장 실패",
+        };
+      }
+    },
+    { error: null },
+  );
+
   if (status !== "authenticated") {
     return null;
   }
@@ -59,46 +92,33 @@ function PostNewForm() {
         </Link>
         <h1 className="text-2xl font-semibold">새 글</h1>
       </div>
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          // tRPC 뮤테이션: 서버에서 세션으로 작성자 확정
-          create.mutate({ title, content, imageUrls });
-        }}
-      >
+      <form className="space-y-4" action={formAction}>
+        <input
+          type="hidden"
+          name="imageUrls"
+          value={JSON.stringify(imageUrls)}
+          aria-hidden
+        />
         <div className="space-y-2">
           <Label htmlFor="title">제목</Label>
-          <Input
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={200}
-            required
-          />
+          <Input id="title" name="title" maxLength={200} required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="content">내용</Label>
-          <Textarea
-            id="content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={8}
-            required
-          />
+          <Textarea id="content" name="content" rows={8} required />
         </div>
         <PostImageAttachments
           imageUrls={imageUrls}
           onChange={setImageUrls}
-          disabled={create.isPending || busy}
+          disabled={busy || isPending}
           onBusyChange={setBusy}
         />
-        {create.error ? (
-          <p className="text-destructive text-sm">{create.error.message}</p>
+        {state.error ? (
+          <p className="text-destructive text-sm">{state.error}</p>
         ) : null}
-        <Button type="submit" disabled={create.isPending || busy}>
-          {create.isPending ? "저장 중…" : "등록"}
-        </Button>
+        <FormSubmitButton pendingLabel="저장 중…" disabled={busy}>
+          등록
+        </FormSubmitButton>
       </form>
     </div>
   );

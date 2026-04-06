@@ -22,6 +22,9 @@ Next.js 16(App Router) + **React 19**, **NextAuth.js**, **tRPC 11**, **Drizzle O
 12. [tRPC 주소 설정과 사용](#12-trpc-주소-설정과-사용)
 13. [캐시 전략 (TanStack Query + tRPC HTTP)](#13-캐시-전략-tanstack-query--trpc-http)
 14. [tRPC를 쓰는 이유와 대안과의 차이](#14-trpc를-쓰는-이유와-대안과의-차이)
+15. [`export const dynamic = "force-dynamic"`](#15-export-const-dynamic--force-dynamic)
+16. [서버 컴포넌트와 클라이언트 컴포넌트 (이 프로젝트 기준)](#16-서버-컴포넌트와-클라이언트-컴포넌트-이-프로젝트-기준)
+17. [렌더링 전략 (CSR, SSR, SSG, RSC, 정적, ISR)](#17-렌더링-전략-csr-ssr-ssg-rsc-정적-isr)
 
 ---
 
@@ -48,7 +51,7 @@ Next.js 16(App Router) + **React 19**, **NextAuth.js**, **tRPC 11**, **Drizzle O
 | **`QueryErrorBoundary`** | `@tanstack/react-query` 의 `useQueryErrorResetBoundary` + `react-error-boundary` — Suspense 쿼리가 던진 오류를 잡고 “다시 시도” 시 쿼리 리셋 |
 | **`PageShell`** | 제목·설명·액션 슬롯이 있는 간단한 페이지 뼈대 |
 
-데이터가 많은 라우트(`posts`, `posts/[id]`, `profile`, `posts/[id]/edit`)는 **`export const dynamic = 'force-dynamic'`** 으로 빌드 시 정적 프리렌더에서 tRPC fetch 오류를 피합니다. tRPC 클라이언트는 서버에서 **`NEXT_PUBLIC_APP_URL`**(또는 `VERCEL_URL`) 기준 **절대 URL**로 `/api/trpc` 를 호출합니다.
+게시판·상세·수정·프로필 쪽 라우트는 **`export const dynamic = "force-dynamic"`** 을 켜 두었습니다. 무엇을 하는지는 [15절](#15-export-const-dynamic--force-dynamic)에서 자세히 설명합니다. tRPC 클라이언트는 서버에서 **`NEXT_PUBLIC_APP_URL`**(또는 `VERCEL_URL`) 기준 **절대 URL**로 `/api/trpc` 를 호출합니다.
 
 ---
 
@@ -448,6 +451,157 @@ const updateName = api.auth.updateName.useMutation({
 - **HTTP 캐시/CDN에 의존한 공개 GET**만으로 서비스가 구성된다면, 의도적으로 “얇은 REST+캐시 헤더”를 택하는 설계도 있다(이 앱의 게시판 JSON은 쿠키·배치 특성상 [캐시 전략 절](#13-캐시-전략-tanstack-query--trpc-http)에서 설명한 `responseMeta`처럼 보수적으로 두었다).
 
 학습·내부용 풀스택 Next 앱에서는 **tRPC + 필요한 곳만 REST** 조합이 이 README의 방향과 맞다.
+
+---
+
+## 15. export const dynamic = "force-dynamic"
+
+App Router에서 `page.tsx` / `layout.tsx` 등 **라우트 세그먼트** 맨 위에 두는 **Route Segment Config** 입니다. 한 줄로 말하면, 그 세그먼트(와 일반적으로 그 아래 자식)를 **“빌드 시점에 완전 정적으로 미리 만들어 두지 말고, 요청이 올 때 동적 렌더링 파이프라인을 타라”**고 Next.js에 알려 주는 설정입니다.
+
+공식 개념은 [Route Segment Config (`dynamic`)](https://nextjs.org/docs/app/api-reference/file-conventions/route-segment-config#dynamic) 문서를 보면 됩니다.
+
+### 15.1 정적 렌더 vs 동적 렌더
+
+| 구분 | 대략적인 동작 | 잘 맞는 경우 |
+|------|----------------|--------------|
+| **정적(Static)** | `next build` 때 RSC 결과를 만들어 두고, 가능하면 같은 결과를 재사용한다. CDN 캐시와 궁합이 좋다. | 마케팅 페이지, 블로그 글처럼 **요청마다 바뀔 필요가 적은** 콘텐츠 |
+| **동적(Dynamic)** | 해당 URL에 대한 요청이 들어올 때 서버에서 RSC를 다시 계산하는 쪽으로 간다(캐시·ISR과 조합하면 세부 동작은 달라질 수 있음). | **쿠키·헤더·로그인 여부·DB 최신값** 등 요청마다 달라질 수 있는 화면 |
+
+`dynamic`은 이 중에서 **“이 세그먼트를 정적으로 고정할지”**를 제어하는 스위치에 가깝습니다.
+
+### 15.2 값의 의미 (자주 쓰는 것만)
+
+- **`"force-dynamic"`** — 이 세그먼트는 **항상 동적**으로 취급한다. 빌드 단계에서 “이 페이지를 정적 프리렌더로 끝내자”는 시도를 하지 않게 만든다.
+- **`"auto"`**(또는 명시 안 함) — Next가 코드를 보고 정적/동적을 **추론**한다. `cookies()`, `headers()`, 특정 `fetch` 옵션 등이 있으면 동적으로 기울기 쉽다.
+- **`"force-static"`** — 가능한 한 정적으로(단, 그만큼 쿠키·요청별 데이터 사용이 제한된다).
+- **`"error"`** — 동적이어야 하는데 정적으로만 처리되면 **빌드 에러**로 잡아 준다.
+
+### 15.3 이 프로젝트에서 `force-dynamic`을 쓰는 이유
+
+1. **빌드 시점과 런타임의 차이**  
+   서버 쪽에서 tRPC 클라이언트가 **`NEXT_PUBLIC_APP_URL`**(또는 `VERCEL_URL`)로 **`/api/trpc`에 절대 URL `fetch`**를 할 수 있다. `next build`를 돌리는 환경에는 앱 서버가 떠 있지 않거나, URL·환경 변수가 런타임과 다를 수 있어 **정적 프리렌더 단계에서 네트워크 호출이 실패**하는 상황을 피하고 싶을 때가 있다. `force-dynamic`은 “이 경로를 빌드 때 정적 산출물로 굳이지 말라”고 **명시**해서 그런 실패를 줄이는 데 도움이 된다.
+
+2. **데이터·세션에 가까운 화면**  
+   게시판 목록·상세·수정·프로필은 DB·로그인 상태와 연결된 UX라, **요청 시점에 서버 렌더링 파이프를 타는 쪽**이 의도에 잘 맞는다.
+
+3. **추론(`auto`)에만 맡기지 않기**  
+   Next 버전이나 트리 구조가 바뀌면 정적/동적 판정이 바뀔 수 있다. 학습용 저장소에서는 **의도를 코드로 고정**해 두면 “왜 빌드만 실패하지?” 같은 디버깅이 쉬워진다.
+
+### 15.4 실제로 걸어 둔 파일
+
+| 파일 | 역할 |
+|------|------|
+| `src/app/posts/page.tsx` | 게시판 목록 |
+| `src/app/posts/[id]/page.tsx` | 글 상세 |
+| `src/app/posts/[id]/edit/page.tsx` | 글 수정 |
+| `src/app/profile/layout.tsx` | 프로필 하위 전체 |
+
+### 15.5 TanStack Query 캐시와 헷갈리지 않기
+
+`force-dynamic`은 **Next 서버가 RSC를 어떻게 만들·캐시하느냐**에 가깝고, 브라우저에서 돌아가는 **TanStack Query 메모리 캐시**와는 별개입니다. 클라이언트 쪽 신선도·무효화는 [캐시 전략 절](#13-캐시-전략-tanstack-query--trpc-http)을 보면 된다.
+
+---
+
+## 16. 서버 컴포넌트와 클라이언트 컴포넌트 (이 프로젝트 기준)
+
+App Router에서는 파일 **맨 위에 `"use client"`가 없으면 기본이 서버 컴포넌트(React Server Component)** 입니다. Next.js와 React의 공식 설명은 각각 [Server Components](https://nextjs.org/docs/app/building-your-application/rendering/server-components), [Client Components](https://nextjs.org/docs/app/building-your-application/rendering/client-components)를 보면 됩니다.
+
+### 16.1 한 줄 요약
+
+| | 서버 컴포넌트 | 클라이언트 컴포넌트 |
+|--|----------------|---------------------|
+| **실행 위치** | 요청 처리 시 **Node(서버)** 에서만 실행(결과만 클라이언트로 전달) | 브라우저에서 **하이드레이션** 후 실행 |
+| **번들** | 클라이언트 JS 번들에 포함되지 않음(트리에 따라 일부 자식은 제외) | 해당 모듈이 **클라이언트 번들**에 포함됨 |
+| **`useState` / `useEffect` / 이벤트** | 사용 불가 | 사용 가능 |
+| **브라우저 전용 API** (`window`, `localStorage` 등) | 직접 쓰면 안 됨 | 사용 가능 |
+| **비밀·서버 전용 모듈** | 서버에서만 import 가능(DB 드라이버, 내부 env 등) | 클라이언트로 새어 나가면 안 되는 코드는 import하지 말 것 |
+
+서버 컴포넌트가 클라이언트 컴포넌트를 **자식으로 import**하는 것은 가능합니다. 반대로 클라이언트 파일이 서버 전용 컴포넌트를 **직접 import**하는 패턴은 되지 않습니다(필요하면 서버에서 조각을 children 등으로 넘기는 식으로 경계를 나눕니다).
+
+### 16.2 이 저장소에서의 역할 나누기
+
+데이터 패칭은 대부분 **클라이언트**에서 tRPC + TanStack Query(`useSuspenseQuery` 등)로 하고, **서버** 쪽 `page.tsx`는 `Suspense`·에러 경계·스켈레톤·동적 `params` 처리 같은 **껍데기**를 맡는 경우가 많습니다.
+
+**서버 컴포넌트 예시 (`"use client"` 없음)**
+
+| 파일 | 하는 일 |
+|------|---------|
+| `src/app/layout.tsx` | 루트 레이아웃, 폰트·`metadata`, `AppProviders` / `SiteHeader` 감싸기 |
+| `src/app/page.tsx` | `redirect("/posts")` 만 수행 |
+| `src/app/posts/page.tsx` | `QueryErrorBoundary` + `Suspense` + `PostListClient` 조합 |
+| `src/app/posts/[id]/page.tsx` | `await params`로 `id` 추출 후 `PostDetailClient`에 전달 |
+| `src/app/posts/[id]/edit/page.tsx` | 동일 패턴으로 `PostEditClient`에 `id` 전달 |
+| `src/app/profile/layout.tsx` | `dynamic` 설정 + `children` 전달 |
+| `src/app/**/loading.tsx` | 라우트 전환 시 보여 줄 스켈레톤(서버에서 RSC로 렌더) |
+| `src/components/scaffold/*-skeleton.tsx` | 스켈레톤 UI(인터랙션 없음 → 서버에 둬도 됨) |
+
+**클라이언트 컴포넌트 예시 (파일에 `"use client"`)**
+
+| 구역 | 파일 | 이유(대표) |
+|------|------|------------|
+| 페이지·폼 | `login/page.tsx`, `register/page.tsx`, `profile/page.tsx`, `posts/new/page.tsx` | `useActionState`, `signIn`, 세션·라우터 |
+| 데이터 UI | `post-list-client.tsx`, `post-detail-client.tsx`, `post-edit-client.tsx` | tRPC React 훅, `useSession`, 무한 스크롤 등 |
+| 전역 | `components/providers.tsx`, `trpc/react.tsx` | `QueryClientProvider`, tRPC `createTRPCReact` |
+| 헤더 | `site-header.tsx` | `useSession`, 클라이언트 네비게이션 |
+| 폼·업로드 | `forms/form-submit-button.tsx`, `posts/post-image-attachments.tsx` | `useFormStatus`, 파일 입력·미리보기 |
+| 가드·경계 | `require-auth.tsx`, `error-boundary/query-error-boundary.tsx` | 훅·에러 경계 API |
+| 에러 UI | `app/error.tsx`, `app/global-error.tsx`, 세그먼트 `error.tsx` | Next 규약상 **클라이언트 컴포넌트**여야 함 |
+| UI 프리미티브(일부) | `components/ui/button.tsx`, `label.tsx`, `separator.tsx` | Radix/Base UI 등 **클라이언트 동작**이 필요한 조각 |
+
+`Card`, `Input` 등 다른 `ui` 파일은 이 프로젝트에서 `"use client"`가 없어 **서버에서도 쓸 수 있는 경량 래퍼**로 두었고, 그 안에 클라이언트 전용 위젯을 넣으면 해당 서브트리만 클라이언트 경계가 생깁니다.
+
+### 16.3 한 페이지 안에서의 조합 예 (`posts/[id]/page.tsx`)
+
+`PostDetailPage`는 **서버** 컴포넌트(`async`, `params` 처리). 그 안에서 **클라이언트**인 `PostDetailClient`에 문자열 `id`만 넘깁니다. 이때 넘기는 props는 **직렬화 가능**해야 하며(문자열·숫자·일반 객체 JSON 등), 함수나 클래스 인스턴스를 그대로 넘기는 식은 피합니다.
+
+### 16.4 Route Handler는 별개
+
+`src/app/api/**/route.ts`, `uploads/[[...path]]/route.ts` 는 **RSC가 아니라 HTTP 핸들러**입니다. “서버에서만 돈다”는 점은 비슷하지만, 컴포넌트 트리의 서버/클라이언트 규칙과는 다른 축입니다.
+
+---
+
+## 17. 렌더링 전략 (CSR, SSR, SSG, RSC, 정적, ISR)
+
+용어는 역사적으로 **Pages Router**와 **App Router**에서 조금씩 달리 쓰이기도 합니다. 여기서는 개념을 먼저 정리하고, 이 저장소에 어떻게 겹치는지만 적습니다. Next 공식의 큰 그림은 [Rendering](https://nextjs.org/docs/app/building-your-application/rendering) 문서를 참고하면 됩니다.
+
+### 17.1 용어 정리
+
+| 용어 | 보통의 의미 |
+|------|-------------|
+| **CSR (Client-Side Rendering)** | HTML/JS를 받은 뒤 **브라우저에서** React가 마운트되고, **데이터도 브라우저에서** `fetch` 등으로 가져온다. 초기 화면은 껍데기만 있고 내용은 나중에 채워지는 형태가 흔하다. |
+| **SSR (Server-Side Rendering)** | (전통적 의미) **요청마다 서버가 HTML을 그려** 보내고, 클라이언트가 하이드레이션한다. **App Router**에서는 “페이지 전체가 한 덩어리 HTML로만”이라기보다, **RSC 페이로드 + 클라이언트 컴포넌트**가 섞인 **서버 주도 렌더**에 가깝다. |
+| **SSG (Static Site Generation)** | **빌드 시점**에 페이지 산출물을 만들어 두고, 배포 후에는 그 결과를 재사용한다. “미리 찍어둔 HTML”에 가깝다. |
+| **정적 렌더링 (Static rendering)** | Next(App Router) 용어로, 라우트를 **가능하면 빌드(또는 캐시) 시점에 정적으로** 만들어 두는 쪽. SSG와 맥락이 겹친다. |
+| **ISR (Incremental Static Regeneration)** | 정적으로 생성해 둔 페이지를 **일정 시간(`revalidate`)마다** 또는 **온디맨드**로 백그라운드에서 갱신한다. “정적의 편의 + 어느 정도의 신선도”를 노리는 패턴. |
+| **RSC (React Server Components)** | 컴포넌트 일부가 **서버에서만 실행**되고, 결과는 직렬화된 트리로 클라이언트에 전달된다. **클라이언트 번들에 안 실리는** 서버 UI·데이터 조합에 쓰인다. App Router의 기본 모델과 맞닿아 있다. |
+
+### 17.2 이 프로젝트에 어떻게 걸려 있는가
+
+**1) RSC + “서버에서의 껍데기”**  
+`layout.tsx`, `posts/page.tsx`의 `Suspense`/`loading.tsx` 경계, `params` 처리 등 **서버 컴포넌트**가 먼저 실행된다([16절](#16-서버-컴포넌트와-클라이언트-컴포넌트-이-프로젝트-기준)). 이 부분은 **RSC 기반의 서버 렌더**다.
+
+**2) 데이터는 대부분 CSR에 가깝게 (클라이언트 tRPC)**  
+게시글 목록·상세·프로필 본문 등 **실제 DB 데이터**는 `PostListClient` 같은 **클라이언트 컴포넌트** 안에서 tRPC + TanStack Query로 가져온다. 즉 **화면의 “살”은 브라우저에서 네트워크 요청으로 채우는 패턴**이라, 전통적인 의미의 **CSR 쪽에 가깝다**. (첫 페인트 직후 스켈레톤 → 클라이언트에서 채움.)
+
+**3) SSR과의 관계**  
+사용자가 URL을 열 때마다 Next가 **동적 라우트**에 대해 서버에서 RSC 트리를 계산한다. 이는 “매 요청 서버가 관여한다”는 점에서 **SSR과 비슷한 체감**이 있지만, 본 앱은 **HTML 안에 글 목록이 이미 다 박혀 나온다**기보다는 **스켈레톤 + 클라이언트 데이터 패칭**이 중심이다.
+
+**4) 정적 렌더 / SSG**  
+`posts`, `posts/[id]` 등에는 **`export const dynamic = "force-dynamic"`**([15절](#15-export-const-dynamic--force-dynamic))이 걸려 있어, 해당 세그먼트를 **빌드 시 완전 정적 페이지로 고정**하는 방향은 쓰지 않는다. 루트 `page.tsx`의 `redirect("/posts")` 같은 아주 얇은 라우트는 Next가 정적으로 처리할 여지가 있으나, **게시판 본류는 “정적 SSG HTML” 모델이 아니다.**
+
+**5) ISR**  
+App Router에서 흔한 **`export const revalidate = 60`** 같은 세그먼트 단위 ISR 설정이나, `fetch(..., { next: { revalidate: … } })` 기반 갱신은 **이 저장소 코드에는 없다**. tRPC Route Handler의 `Cache-Control`에 `must-revalidate` 문자열이 들어가 있지만, 그건 **HTTP 캐시 헤더**이지 Next의 **ISR `revalidate` 옵션**과는 별개다([13절](#13-캐시-전략-tanstack-query--trpc-http)).
+
+### 17.3 한 줄로 요약 (이 레포)
+
+| 전략 | 이 프로젝트에서 |
+|------|-----------------|
+| **RSC / 서버 렌더** | 레이아웃·로딩·경계·`params` 등 **서버 컴포넌트 셸** |
+| **CSR** | tRPC + TanStack Query로 **게시글·프로필 데이터 주입** |
+| **정적 / SSG** | 게시판 핵심 라우트는 `force-dynamic`으로 **의도적 비사용** |
+| **ISR** | **미사용** (필요 시 세그먼트 `revalidate` 또는 `fetch` 캐시 정책을 별도 도입) |
+
+원하면 “첫 페인트에 목록 HTML까지 서버에서 채운다” 쪽으로 옮기려면, 서버에서 tRPC `caller`나 서비스 함수를 직접 호출해 RSC가 데이터를 들고 오게 바꾸는 식의 설계 변경이 필요하다. 현재 구조는 **학습·구현 단순화를 위해 클라이언트 데이터 패칭을 택한 형태**로 이해하면 된다.
 
 ---
 

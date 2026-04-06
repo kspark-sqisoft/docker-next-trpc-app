@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { PostImageAttachments } from "@/components/posts/post-image-attachments";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/forms/form-submit-button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { STALE_POST_DETAIL_MS } from "@/lib/query-cache";
 import { api } from "@/trpc/react";
+
+type PostFormState = { error: string | null };
 
 export function PostEditClient({ id }: { id: string }) {
   const router = useRouter();
@@ -25,23 +28,56 @@ export function PostEditClient({ id }: { id: string }) {
   const update = api.post.update.useMutation({
     onSuccess: async (p) => {
       await utils.post.listInfinite.invalidate();
-      // 상세 캐시도 갱신해 이전 본문이 남지 않게 함
       await utils.post.byId.invalidate({ id: p.id });
       router.push(`/posts/${p.id}`);
     },
   });
 
-  const [title, setTitle] = useState(post.title);
-  const [content, setContent] = useState(post.content);
   const [imageUrls, setImageUrls] = useState<string[]>(post.imageUrls ?? []);
   const [busy, setBusy] = useState(false);
+
+  const [state, formAction, isPending] = useActionState(
+    async (
+      _prev: PostFormState,
+      formData: FormData,
+    ): Promise<PostFormState> => {
+      const title = String(formData.get("title") ?? "");
+      const content = String(formData.get("content") ?? "");
+      let parsedUrls: string[] = [];
+      try {
+        const raw = formData.get("imageUrls");
+        if (raw != null && String(raw) !== "") {
+          const v = JSON.parse(String(raw)) as unknown;
+          if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
+            return { error: "첨부 정보가 올바르지 않습니다." };
+          }
+          parsedUrls = v;
+        }
+      } catch {
+        return { error: "첨부 정보가 올바르지 않습니다." };
+      }
+      try {
+        await update.mutateAsync({
+          id,
+          title,
+          content,
+          imageUrls: parsedUrls,
+        });
+        return { error: null };
+      } catch (e) {
+        return {
+          error: e instanceof Error ? e.message : "저장 실패",
+        };
+      }
+    },
+    { error: null },
+  );
 
   const isAuthor = Boolean(
     session?.user?.id &&
       post.authorId &&
       session.user.id === post.authorId,
   );
-  // 작성자가 아니면 폼 대신 안내만
   if (!isAuthor) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -67,24 +103,19 @@ export function PostEditClient({ id }: { id: string }) {
         </Link>
         <h1 className="text-2xl font-semibold">글 수정</h1>
       </div>
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          update.mutate({
-            id,
-            title,
-            content,
-            imageUrls,
-          });
-        }}
-      >
+      <form className="space-y-4" action={formAction}>
+        <input
+          type="hidden"
+          name="imageUrls"
+          value={JSON.stringify(imageUrls)}
+          aria-hidden
+        />
         <div className="space-y-2">
           <Label htmlFor="title">제목</Label>
           <Input
             id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            name="title"
+            defaultValue={post.title}
             maxLength={200}
             required
           />
@@ -93,8 +124,8 @@ export function PostEditClient({ id }: { id: string }) {
           <Label htmlFor="content">내용</Label>
           <Textarea
             id="content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+            name="content"
+            defaultValue={post.content}
             rows={8}
             required
           />
@@ -102,15 +133,15 @@ export function PostEditClient({ id }: { id: string }) {
         <PostImageAttachments
           imageUrls={imageUrls}
           onChange={setImageUrls}
-          disabled={update.isPending || busy}
+          disabled={busy || isPending}
           onBusyChange={setBusy}
         />
-        {update.error ? (
-          <p className="text-destructive text-sm">{update.error.message}</p>
+        {state.error ? (
+          <p className="text-destructive text-sm">{state.error}</p>
         ) : null}
-        <Button type="submit" disabled={update.isPending || busy}>
-          {update.isPending ? "저장 중…" : "저장"}
-        </Button>
+        <FormSubmitButton pendingLabel="저장 중…" disabled={busy}>
+          저장
+        </FormSubmitButton>
       </form>
     </div>
   );

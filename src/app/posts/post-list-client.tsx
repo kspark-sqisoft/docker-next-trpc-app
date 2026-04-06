@@ -19,7 +19,7 @@ import {
 import { api } from "@/trpc/react";
 
 // 서버 listInfinite 한 번에 가져올 행 수(커서 페이지 크기)
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 export function PostListClient() {
   // NextAuth 세션 상태(로그인 시 글쓰기 버튼 표시)
