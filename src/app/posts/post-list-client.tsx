@@ -16,14 +16,19 @@ import { cn } from "@/lib/utils";
 import { actionLog, flowLog } from "@/lib/flow-log";
 import {
   GC_TIME_INFINITE_MS,
+  STALE_POST_DETAIL_MS,
   STALE_POST_LIST_MS,
 } from "@/lib/query-cache";
-import { POST_LIST_PAGE_SIZE } from "@/lib/post-list-config";
+import {
+  POST_LIST_PAGE_SIZE,
+  postListInfiniteGetNextPageParam,
+} from "@/lib/post-list-config";
 import { api } from "@/trpc/react";
 
 export function PostListClient() {
   // NextAuth 세션 상태(로그인 시 글쓰기 버튼 표시)
   const { status } = useSession();
+  const utils = api.useUtils();
 
   // 첫 페이지는 Suspense가 기다림, 이후는 fetchNextPage로 페이지 누적
   const [data, query] = api.post.listInfinite.useSuspenseInfiniteQuery(
@@ -32,14 +37,15 @@ export function PostListClient() {
       staleTime: STALE_POST_LIST_MS,
       gcTime: GC_TIME_INFINITE_MS,
       // 다음 요청에 넣을 커서; 없으면 TanStack Query가 더 불러오지 않음
-      getNextPageParam: (last) => last.nextCursor ?? undefined,
+      getNextPageParam: postListInfiniteGetNextPageParam,
     },
   );
 
   // 다음 페이지 fetch·더 있음 여부·추가 로딩 중 플래그
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
   // pages 배열을 한 줄 목록으로 펼침(화면에는 전체 누적 글)
-  const items = data.pages.flatMap((p) => p.items);
+  // useSuspenseInfiniteQuery 는 보통 data 가 항상 있지만, hydrate/리셋 직후 등 일부 타이밍에 undefined 가 나올 수 있어 방어
+  const items = (data?.pages ?? []).flatMap((p) => p.items);
 
   const onScrollFetch = useCallback(() => {
     actionLog("posts-list", "스크롤: 목록 다음 페이지 로드");
@@ -53,6 +59,18 @@ export function PostListClient() {
     rootMargin: "200px",
     onIntersect: onScrollFetch,
   });
+
+  const prefetchPostDetail = useCallback(
+    (id: string) => {
+      actionLog("posts-list", "호버: 글 상세 프리패치", { id });
+      flowLog("posts-list", "post.byId.prefetch");
+      void utils.post.byId.prefetch(
+        { id },
+        { staleTime: STALE_POST_DETAIL_MS },
+      );
+    },
+    [utils],
+  );
 
   return (
     <PageShell
@@ -76,22 +94,25 @@ export function PostListClient() {
         {/* 누적된 모든 페이지 행을 순서대로 렌더 */}
         {items.map((p) => (
           <li key={p.id}>
-            <Card className="transition-shadow hover:shadow-md">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">
-                  <Link
-                    href={`/posts/${p.id}`}
-                    className="hover:text-primary underline-offset-4 hover:underline"
-                  >
+            <Link
+              href={`/posts/${p.id}`}
+              className={cn(
+                "group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              )}
+              onPointerEnter={() => prefetchPostDetail(p.id)}
+            >
+              <Card className="transition-shadow group-hover:shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg group-hover:text-primary group-hover:underline underline-offset-4">
                     {p.title}
-                  </Link>
-                </CardTitle>
-                <CardDescription>
-                  {p.authorName ?? "익명"} ·{" "}
-                  {new Date(p.createdAt).toLocaleString("ko-KR")}
-                </CardDescription>
-              </CardHeader>
-            </Card>
+                  </CardTitle>
+                  <CardDescription>
+                    {p.authorName ?? "익명"} ·{" "}
+                    {new Date(p.createdAt).toLocaleString("ko-KR")}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
           </li>
         ))}
       </ul>

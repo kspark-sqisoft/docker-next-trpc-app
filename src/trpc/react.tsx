@@ -85,6 +85,14 @@ export function TrpcProvider({ children }: { children: React.ReactNode }) {
           mutations: {
             retry: false,
           },
+          // RSC `createServerSideHelpers().dehydrate()` + HydrationBoundary 와 `Date` 등 타입을 맞춤
+          // @see https://trpc.io/docs/client/tanstack-react-query/server-components
+          dehydrate: {
+            serializeData: superjson.serialize,
+          },
+          hydrate: {
+            deserializeData: superjson.deserialize,
+          },
         },
       }),
   );

@@ -81,7 +81,7 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 mb-4">
               <Label htmlFor="password">비밀번호</Label>
               <Input
                 id="password"

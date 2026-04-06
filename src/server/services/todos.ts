@@ -1,7 +1,7 @@
 /**
  * 할 일 DB: 목록·생성·완료 토글·삭제 (본인 데이터만)
  */
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { todos } from "@/server/db/schema";
 import { TRPCError } from "@trpc/server";
@@ -17,7 +17,8 @@ export type TodoListItem = {
 export async function listTodosForUser(userId: string): Promise<TodoListItem[]> {
   const rows = await db.query.todos.findMany({
     where: eq(todos.userId, userId),
-    orderBy: [asc(todos.completed), desc(todos.createdAt)],
+    // 완료 여부로 정렬하지 않음 — 체크 시 목록 순서가 바뀌지 않도록 생성 시각만 사용
+    orderBy: [desc(todos.createdAt), desc(todos.id)],
   });
   return rows.map((t) => ({
     id: t.id,

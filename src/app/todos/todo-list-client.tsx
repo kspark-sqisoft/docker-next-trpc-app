@@ -1,7 +1,9 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import type { inferRouterOutputs } from "@trpc/server";
+import { useCallback, useOptimistic, useState, startTransition } from "react";
+import type { AppRouter } from "@/server/trpc/root";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,6 +19,9 @@ import { GC_TIME_INFINITE_MS, STALE_TODO_LIST_MS } from "@/lib/query-cache";
 import { cn } from "@/lib/utils";
 import { api } from "@/trpc/react";
 
+type TodoRow = inferRouterOutputs<AppRouter>["todo"]["list"][number];
+type ToggleOptimistic = { id: string; completed: boolean };
+
 export function TodoListClient() {
   const [title, setTitle] = useState("");
   const utils = api.useUtils();
@@ -26,6 +31,14 @@ export function TodoListClient() {
     gcTime: GC_TIME_INFINITE_MS,
   });
 
+  const [optimisticTodos, setOptimisticCompleted] = useOptimistic(
+    todos,
+    (current: TodoRow[], action: ToggleOptimistic): TodoRow[] =>
+      current.map((t) =>
+        t.id === action.id ? { ...t, completed: action.completed } : t,
+      ),
+  );
+
   const createMut = api.todo.create.useMutation({
     onSuccess: async () => {
       await utils.todo.list.invalidate();
@@ -34,6 +47,9 @@ export function TodoListClient() {
 
   const toggleMut = api.todo.toggleCompleted.useMutation({
     onSuccess: async () => {
+      await utils.todo.list.invalidate();
+    },
+    onError: async () => {
       await utils.todo.list.invalidate();
     },
   });
@@ -92,17 +108,17 @@ export function TodoListClient() {
         </p>
       ) : null}
 
-      {todos.length === 0 ? (
+      {optimisticTodos.length === 0 ? (
         <p className="text-muted-foreground mt-6 text-sm">
           등록된 할 일이 없습니다. 위에서 추가해 보세요.
         </p>
       ) : (
         <ul className="mt-6 space-y-3">
-          {todos.map((todo) => (
+          {optimisticTodos.map((todo) => (
             <li key={todo.id}>
               <Card
                 className={cn(
-                  "transition-shadow",
+                  "transition-[box-shadow,background-color,border-color] duration-200 ease-out",
                   todo.completed && "border-muted bg-muted/30",
                 )}
               >
@@ -114,11 +130,15 @@ export function TodoListClient() {
                       toggleMut.isPending && toggleMut.variables?.id === todo.id
                     }
                     onChange={() => {
+                      const next = !todo.completed;
                       actionLog("todos", "완료 토글", {
                         id: todo.id,
-                        next: !todo.completed,
+                        next,
                       });
-                      flowLog("todos", "todo.toggleCompleted");
+                      flowLog("todos", "todo.toggleCompleted (useOptimistic)");
+                      startTransition(() => {
+                        setOptimisticCompleted({ id: todo.id, completed: next });
+                      });
                       toggleMut.mutate({ id: todo.id });
                     }}
                     className="border-input text-primary focus-visible:ring-ring size-4 shrink-0 rounded border shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
