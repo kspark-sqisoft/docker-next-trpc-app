@@ -1,5 +1,7 @@
 "use client";
 
+import { actionLog } from "@/lib/flow-log";
+
 export default function GlobalError({
   error,
   reset,
@@ -17,7 +19,10 @@ export default function GlobalError({
         <button
           type="button"
           className="rounded-md border px-4 py-2 text-sm"
-          onClick={() => reset()}
+          onClick={() => {
+            actionLog("error-global", "클릭: 다시 시도 (global-error)");
+            reset();
+          }}
         >
           다시 시도
         </button>

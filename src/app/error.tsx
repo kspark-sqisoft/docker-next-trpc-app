@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { actionLog } from "@/lib/flow-log";
 import {
   Card,
   CardContent,
@@ -36,7 +37,13 @@ export default function RootError({
           <p className="text-destructive text-sm">{error.message}</p>
         </CardContent>
         <CardFooter>
-          <Button type="button" onClick={() => reset()}>
+          <Button
+            type="button"
+            onClick={() => {
+              actionLog("error-root", "클릭: 다시 시도 (app/error.tsx)");
+              reset();
+            }}
+          >
             다시 시도
           </Button>
         </CardFooter>

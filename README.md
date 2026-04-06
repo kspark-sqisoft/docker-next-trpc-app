@@ -92,7 +92,18 @@ npm run dev
 
 `http://localhost:3000` — `/posts`, `/login`, `/register`, `/profile`.
 
-### 4.4 DB만 Docker, Next는 로컬 (`npm run dev`)
+### 4.4 콘솔 흐름 로그 (`[flow:*]`)
+
+학습용으로 주요 단계에 `flowLog`가 박혀 있습니다(`src/lib/flow-log.ts`). 접두사 **`[flow:태그]`** 로 필터하기 쉽습니다.
+
+- **브라우저** DevTools 콘솔: tRPC `fetch`, 폼 action, 무한 스크롤, 세션 가드 등.
+- **터미널**(Next 서버 프로세스): RSC `page.tsx` 진입, tRPC `createTRPCContext` 등.
+
+**HTTP 요청/응답**은 `src/lib/http-request-log.ts`에서 묶어서 남깁니다. 같은 순번 **`요청 #n` / `응답 #n`** 으로 짝을 맞출 수 있고, **`status` / `statusText` / `ok`** 와 본문 미리보기(길면 잘림)가 포함됩니다. **브라우저** DevTools에서는 `%c` 스타일로 태그(회색)·**요청(파랑)**·**응답 2xx(초록) / 4xx(주황) / 5xx(빨강)**·**fetch 실패(빨강)** 이 구분됩니다. **Node(Next 서버)** 터미널에서는 ANSI 색으로 비슷하게 구분됩니다. tRPC는 태그 **`trpc-http`**, 회원가입·업로드 REST는 **`rest-auth`**, **`rest-upload-*`** 등입니다. JSON 본문은 필드명에 `password` 등이 있으면 **`[REDACTED]`** 로 가립니다.
+
+`NODE_ENV === "development"` 일 때만 기본 출력됩니다. 프로덕션 빌드에서도 보려면 `.env`에 **`NEXT_PUBLIC_DEBUG_FLOW=1`** (`.env.example` 참고).
+
+### 4.5 DB만 Docker, Next는 로컬 (`npm run dev`)
 
 Postgres만 Compose로 띄우고 앱은 호스트에서 돌릴 때는 **DB 주소가 컨테이너 이름(`db`)이 아니라 `localhost`** 여야 합니다.
 
@@ -291,7 +302,7 @@ function trpcLinks() {
 }
 ```
 
-**환경 변수**: `NEXT_PUBLIC_APP_URL` 을 앱이 노출하는 실제 URL 과 맞추면 SSR·Docker·리버스 프록시에서 404/잘못된 호스트를 줄일 수 있다. (§7, §4.4 참고)
+**환경 변수**: `NEXT_PUBLIC_APP_URL` 을 앱이 노출하는 실제 URL 과 맞추면 SSR·Docker·리버스 프록시에서 404/잘못된 호스트를 줄일 수 있다. (§7, §4.5 참고)
 
 ### 12.3 앱에 붙이기
 

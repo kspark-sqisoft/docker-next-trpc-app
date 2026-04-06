@@ -7,8 +7,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import superjson from "superjson";
+import {
+  logHttpFetchFailure,
+  logHttpRequest,
+  logHttpResponse,
+  nextHttpLogId,
+} from "@/lib/http-request-log";
+import { flowLog } from "@/lib/flow-log";
 import {
   GC_TIME_DEFAULT_MS,
   queryRetry,
@@ -30,9 +37,34 @@ function trpcLinks() {
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      // NextAuth 세션 쿠키를 tRPC 요청에 실어 보냄
-      fetch(url, opts) {
-        return fetch(url, { ...opts, credentials: "include" });
+      // NextAuth 세션 쿠키를 tRPC 요청에 실어 보냄 + 요청/응답·status 로그
+      async fetch(url, opts) {
+        const id = nextHttpLogId();
+        const merged: RequestInit = { ...opts, credentials: "include" };
+        logHttpRequest("trpc-http", id, {
+          url: String(url),
+          method: (merged.method as string) ?? "POST",
+          init: merged,
+        });
+        try {
+          const res = await fetch(url, merged);
+          const bodyText = await res.clone().text();
+          logHttpResponse("trpc-http", id, {
+            url: String(url),
+            status: res.status,
+            statusText: res.statusText,
+            ok: res.ok,
+            bodyText,
+          });
+          return res;
+        } catch (e) {
+          logHttpFetchFailure(
+            "trpc-http",
+            id,
+            e instanceof Error ? e.message : String(e),
+          );
+          throw e;
+        }
       },
     }),
   ];
@@ -62,6 +94,15 @@ export function TrpcProvider({ children }: { children: React.ReactNode }) {
       links: trpcLinks(),
     }),
   );
+
+  useEffect(() => {
+    flowLog("trpc-provider", "TrpcProvider 마운트", {
+      baseUrl:
+        typeof window !== "undefined"
+          ? "(브라우저: 상대 경로 /api/trpc)"
+          : getBaseUrl(),
+    });
+  }, []);
 
   return (
     <api.Provider client={trpcClient} queryClient={queryClient}>

@@ -4,8 +4,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { actionLog, flowLog } from "@/lib/flow-log";
 import { STALE_POST_DETAIL_MS } from "@/lib/query-cache";
 import { api } from "@/trpc/react";
 
@@ -34,6 +36,15 @@ export function PostDetailClient({ id }: { id: string }) {
       session.user.id === post.authorId,
   );
 
+  useEffect(() => {
+    flowLog("post-detail", "post.byId 준비됨", {
+      id: post.id,
+      title: post.title.slice(0, 40),
+      sessionStatus: status,
+      isAuthor,
+    });
+  }, [post.id, post.title, status, isAuthor]);
+
   return (
     <article className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -60,8 +71,14 @@ export function PostDetailClient({ id }: { id: string }) {
               size="sm"
               disabled={del.isPending}
               onClick={() => {
+                actionLog("post-detail", "클릭: 삭제", { postId: post.id });
                 if (confirm("이 글을 삭제할까요?")) {
+                  actionLog("post-detail", "확인: 삭제 실행", { postId: post.id });
                   del.mutate({ id: post.id });
+                } else {
+                  actionLog("post-detail", "취소: 삭제 안 함", {
+                    postId: post.id,
+                  });
                 }
               }}
             >

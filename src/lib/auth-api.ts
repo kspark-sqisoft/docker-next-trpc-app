@@ -1,3 +1,5 @@
+import { fetchWithFlowLog } from "@/lib/http-request-log";
+
 export type SafeUserJson = {
   id: string;
   email: string;
@@ -36,12 +38,16 @@ export async function registerUser(input: {
   password: string;
   name: string;
 }): Promise<{ user: SafeUserJson }> {
-  const res = await fetch("/api/auth/register", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  const res = await fetchWithFlowLog(
+    "/api/auth/register",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    "rest-auth",
+  );
   if (!res.ok) {
     throwHttpError(
       res,
@@ -55,11 +61,15 @@ export async function registerUser(input: {
 export async function uploadPostImage(file: File): Promise<{ url: string }> {
   const body = new FormData();
   body.append("file", file);
-  const res = await fetch("/api/upload/post-image", {
-    method: "POST",
-    credentials: "include",
-    body,
-  });
+  const res = await fetchWithFlowLog(
+    "/api/upload/post-image",
+    {
+      method: "POST",
+      credentials: "include",
+      body,
+    },
+    "rest-upload-post-image",
+  );
   if (!res.ok) {
     throwHttpError(
       res,
@@ -73,11 +83,15 @@ export async function uploadPostImage(file: File): Promise<{ url: string }> {
 export async function uploadAvatar(file: File): Promise<SafeUserJson> {
   const body = new FormData();
   body.append("file", file);
-  const res = await fetch("/api/upload/avatar", {
-    method: "POST",
-    credentials: "include",
-    body,
-  });
+  const res = await fetchWithFlowLog(
+    "/api/upload/avatar",
+    {
+      method: "POST",
+      credentials: "include",
+      body,
+    },
+    "rest-upload-avatar",
+  );
   if (!res.ok) {
     throwHttpError(
       res,

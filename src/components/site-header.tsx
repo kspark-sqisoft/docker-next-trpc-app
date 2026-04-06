@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { User } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { actionLog, flowLog } from "@/lib/flow-log";
 import { cn } from "@/lib/utils";
 
 // 좌측 고정 네비 항목
@@ -74,7 +75,13 @@ export function SiteHeader() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void signOut({ callbackUrl: "/posts" })}
+                onClick={() => {
+                  actionLog("site-header", "클릭: 로그아웃", {
+                    callbackUrl: "/posts",
+                  });
+                  flowLog("site-header", "signOut 호출");
+                  void signOut({ callbackUrl: "/posts" });
+                }}
               >
                 로그아웃
               </Button>

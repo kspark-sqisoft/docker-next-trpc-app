@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { actionLog } from "@/lib/flow-log";
 import { cn } from "@/lib/utils";
 
 export default function PostDetailError({
@@ -21,7 +22,14 @@ export default function PostDetailError({
       <h2 className="font-medium">글을 불러오지 못했습니다</h2>
       <p className="text-muted-foreground mt-2 text-sm">{error.message}</p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" variant="outline" onClick={reset}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            actionLog("error-post-detail", "클릭: 다시 시도 (글 상세)");
+            reset();
+          }}
+        >
           다시 시도
         </Button>
         <Link href="/posts" className={cn(buttonVariants({ variant: "ghost" }))}>

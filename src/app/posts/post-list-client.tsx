@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { PageShell } from "@/components/scaffold/page-shell";
 import { cn } from "@/lib/utils";
+import { actionLog, flowLog } from "@/lib/flow-log";
 import {
   GC_TIME_INFINITE_MS,
   STALE_POST_LIST_MS,
@@ -53,6 +54,8 @@ export function PostListClient() {
         const first = entries[0];
         if (!first?.isIntersecting) return;
         if (!hasNextPage || isFetchingNextPage) return;
+        actionLog("posts-list", "스크롤: 목록 다음 페이지 로드");
+        flowLog("posts-list", "fetchNextPage()");
         void fetchNextPage();
       },
       // root=null 은 브라우저 창 기준, rootMargin 으로 바닥 도달 전에 미리 로드

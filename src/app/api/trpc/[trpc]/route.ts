@@ -1,13 +1,23 @@
 /**
  * tRPC HTTP 어댑터: /api/trpc 로 들어온 GET·POST 를 appRouter 로 넘긴다.
  */
+import { after } from "next/server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import {
+  captureTrpcServerPostLogSnapshot,
+  logTrpcServerIncomingGet,
+  logTrpcServerPostFromSnapshot,
+} from "@/lib/trpc-server-access-log";
 import { createTRPCContext } from "@/server/trpc/context";
 import { appRouter } from "@/server/trpc/root";
 
 // App Router 가 넘기는 표준 Request 로 배치·스트리밍 처리
-const handler = (req: Request) =>
-  fetchRequestHandler({
+const handler = async (req: Request) => {
+  const method = (req.method || "GET").toUpperCase();
+  const postSnapshot =
+    method === "POST" ? await captureTrpcServerPostLogSnapshot(req) : null;
+
+  const res = await fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
     router: appRouter,
@@ -20,5 +30,20 @@ const handler = (req: Request) =>
       return { headers };
     },
   });
+
+  const url = req.url;
+  if (method === "GET") {
+    after(() => {
+      logTrpcServerIncomingGet(url);
+    });
+  } else if (postSnapshot) {
+    const snap = postSnapshot;
+    after(() => {
+      logTrpcServerPostFromSnapshot(snap.headline, snap.record);
+    });
+  }
+
+  return res;
+};
 
 export { handler as GET, handler as POST };

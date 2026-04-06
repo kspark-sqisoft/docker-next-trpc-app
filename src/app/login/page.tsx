@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { actionLog, flowLog } from "@/lib/flow-log";
 
 type LoginFormState = { error: string | null };
 
@@ -30,6 +31,11 @@ export default function LoginPage() {
     ): Promise<LoginFormState> => {
       const email = String(formData.get("email") ?? "").trim();
       const password = String(formData.get("password") ?? "");
+      actionLog("auth-login", "폼 제출: 로그인", {
+        email,
+        passwordLen: password.length,
+      });
+      flowLog("auth-login", "signIn(credentials) 진행");
       try {
         const res = await signIn("credentials", {
           email,
@@ -37,14 +43,17 @@ export default function LoginPage() {
           redirect: false,
         });
         if (res?.error) {
+          flowLog("auth-login", "signIn 실패(자격 증명)", { error: res.error });
           return {
             error: "이메일 또는 비밀번호가 올바르지 않습니다.",
           };
         }
+        flowLog("auth-login", "signIn 성공 → router.push(/posts) + refresh");
         router.push("/posts");
         router.refresh();
         return { error: null };
       } catch {
+        flowLog("auth-login", "signIn 예외");
         return { error: "로그인에 실패했습니다." };
       }
     },

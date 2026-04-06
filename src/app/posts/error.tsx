@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { actionLog } from "@/lib/flow-log";
 
 export default function PostsError({
   error,
@@ -18,7 +19,15 @@ export default function PostsError({
     <div className="border-destructive/30 bg-destructive/5 rounded-lg border p-6">
       <h2 className="font-medium">게시판을 불러오지 못했습니다</h2>
       <p className="text-muted-foreground mt-2 text-sm">{error.message}</p>
-      <Button className="mt-4" type="button" variant="outline" onClick={reset}>
+      <Button
+        className="mt-4"
+        type="button"
+        variant="outline"
+        onClick={() => {
+          actionLog("error-posts", "클릭: 다시 시도 (게시판)");
+          reset();
+        }}
+      >
         다시 시도
       </Button>
     </div>

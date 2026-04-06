@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { actionLog, flowLog } from "@/lib/flow-log";
 import { api } from "@/trpc/react";
 
 type PostFormState = { error: string | null };
@@ -30,8 +31,12 @@ function PostNewForm() {
   const utils = api.useUtils();
   const create = api.post.create.useMutation({
     onSuccess: async (post) => {
+      flowLog("post-create", "mutation onSuccess", { id: post.id });
       await utils.post.listInfinite.invalidate();
       router.push(`/posts/${post.id}`);
+    },
+    onError: (e) => {
+      flowLog("post-create", "mutation onError", { message: e.message });
     },
   });
 
@@ -58,14 +63,24 @@ function PostNewForm() {
       } catch {
         return { error: "첨부 정보가 올바르지 않습니다." };
       }
+      actionLog("post-new", "폼 제출: 글 등록", {
+        titleLen: title.length,
+        contentLen: content.length,
+        imageCount: parsedUrls.length,
+      });
+      flowLog("post-new", "post.create 진행");
       try {
         await create.mutateAsync({
           title,
           content,
           imageUrls: parsedUrls.length > 0 ? parsedUrls : undefined,
         });
+        flowLog("post-new", "post.create mutateAsync 완료(라우팅은 onSuccess)");
         return { error: null };
       } catch (e) {
+        flowLog("post-new", "post.create 실패", {
+          message: e instanceof Error ? e.message : String(e),
+        });
         return {
           error: e instanceof Error ? e.message : "저장 실패",
         };

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { actionLog, flowLog } from "@/lib/flow-log";
 import { registerUser } from "@/lib/auth-api";
 
 type RegisterFormState = { error: string | null };
@@ -32,23 +33,35 @@ export default function RegisterPage() {
       const name = String(formData.get("name") ?? "").trim();
       const email = String(formData.get("email") ?? "").trim();
       const password = String(formData.get("password") ?? "");
+      actionLog("auth-register", "폼 제출: 회원가입", {
+        email,
+        name,
+        passwordLen: password.length,
+      });
+      flowLog("auth-register", "registerUser → signIn 진행");
       try {
         await registerUser({ email, password, name });
+        flowLog("auth-register", "registerUser 완료 → signIn");
         const res = await signIn("credentials", {
           email,
           password,
           redirect: false,
         });
         if (res?.error) {
+          flowLog("auth-register", "가입 후 signIn 실패", { error: res.error });
           return {
             error:
               "가입은 되었으나 로그인에 실패했습니다. 로그인 페이지에서 시도해 주세요.",
           };
         }
+        flowLog("auth-register", "가입+로그인 성공 → /posts");
         router.push("/posts");
         router.refresh();
         return { error: null };
       } catch (er) {
+        flowLog("auth-register", "회원가입 흐름 예외", {
+          message: er instanceof Error ? er.message : String(er),
+        });
         return {
           error: er instanceof Error ? er.message : "회원가입 실패",
         };

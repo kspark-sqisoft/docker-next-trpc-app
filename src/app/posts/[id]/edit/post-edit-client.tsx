@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { actionLog, flowLog } from "@/lib/flow-log";
 import { STALE_POST_DETAIL_MS } from "@/lib/query-cache";
 import { api } from "@/trpc/react";
 
@@ -27,9 +28,13 @@ export function PostEditClient({ id }: { id: string }) {
 
   const update = api.post.update.useMutation({
     onSuccess: async (p) => {
+      flowLog("post-update", "mutation onSuccess", { id: p.id });
       await utils.post.listInfinite.invalidate();
       await utils.post.byId.invalidate({ id: p.id });
       router.push(`/posts/${p.id}`);
+    },
+    onError: (e) => {
+      flowLog("post-update", "mutation onError", { message: e.message });
     },
   });
 
@@ -56,6 +61,13 @@ export function PostEditClient({ id }: { id: string }) {
       } catch {
         return { error: "첨부 정보가 올바르지 않습니다." };
       }
+      actionLog("post-edit", "폼 제출: 글 수정", {
+        id,
+        titleLen: title.length,
+        contentLen: content.length,
+        imageCount: parsedUrls.length,
+      });
+      flowLog("post-edit", "post.update 진행");
       try {
         await update.mutateAsync({
           id,
@@ -63,8 +75,12 @@ export function PostEditClient({ id }: { id: string }) {
           content,
           imageUrls: parsedUrls,
         });
+        flowLog("post-edit", "post.update mutateAsync 완료");
         return { error: null };
       } catch (e) {
+        flowLog("post-edit", "post.update 실패", {
+          message: e instanceof Error ? e.message : String(e),
+        });
         return {
           error: e instanceof Error ? e.message : "저장 실패",
         };

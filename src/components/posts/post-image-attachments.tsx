@@ -4,6 +4,7 @@
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadPostImage } from "@/lib/auth-api";
+import { actionLog } from "@/lib/flow-log";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,10 @@ export function PostImageAttachments({
   }
 
   function removeAt(index: number) {
+    actionLog("post-images", "클릭: 첨부 이미지 제거", {
+      index,
+      remaining: imageUrls.length - 1,
+    });
     onChange(imageUrls.filter((_, i) => i !== index));
   }
 
@@ -74,7 +79,10 @@ export function PostImageAttachments({
           size="sm"
           disabled={disabled || uploading || imageUrls.length >= MAX_IMAGES}
           className="gap-1.5"
-          onClick={() => inputRef.current?.click()}
+          onClick={() => {
+            actionLog("post-images", "클릭: 이미지 추가(파일 대화상자)");
+            inputRef.current?.click();
+          }}
         >
           {uploading ? (
             <Loader2 className="size-3.5 animate-spin" aria-hidden />
