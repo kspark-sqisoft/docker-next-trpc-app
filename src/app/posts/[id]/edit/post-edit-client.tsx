@@ -10,12 +10,16 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { STALE_POST_DETAIL_MS } from "@/lib/query-cache";
 import { api } from "@/trpc/react";
 
 export function PostEditClient({ id }: { id: string }) {
   const router = useRouter();
   const { data: session } = useSession();
-  const [post] = api.post.byId.useSuspenseQuery({ id });
+  const [post] = api.post.byId.useSuspenseQuery(
+    { id },
+    { staleTime: STALE_POST_DETAIL_MS },
+  );
   const utils = api.useUtils();
 
   const update = api.post.update.useMutation({

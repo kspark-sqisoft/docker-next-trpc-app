@@ -6,13 +6,17 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { STALE_POST_DETAIL_MS } from "@/lib/query-cache";
 import { api } from "@/trpc/react";
 
 export function PostDetailClient({ id }: { id: string }) {
   const router = useRouter();
   const { data: session, status } = useSession();
   // 단건 조회: Suspense가 데이터 준비될 때까지 상위 fallback 표시
-  const [post] = api.post.byId.useSuspenseQuery({ id });
+  const [post] = api.post.byId.useSuspenseQuery(
+    { id },
+    { staleTime: STALE_POST_DETAIL_MS },
+  );
   const utils = api.useUtils();
 
   const del = api.post.delete.useMutation({

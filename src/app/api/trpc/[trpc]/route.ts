@@ -12,6 +12,13 @@ const handler = (req: Request) =>
     req,
     router: appRouter,
     createContext: createTRPCContext,
+    // 쿠키·세션 기반 배치이므로 공유 캐시에 저장되면 안 됨. 브라우저·CDN 힌트만 명시.
+    responseMeta() {
+      const headers = new Headers();
+      headers.set("Cache-Control", "private, no-store, must-revalidate");
+      headers.set("Vary", "Cookie");
+      return { headers };
+    },
   });
 
 export { handler as GET, handler as POST };

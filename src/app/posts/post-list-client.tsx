@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/card";
 import { PageShell } from "@/components/scaffold/page-shell";
 import { cn } from "@/lib/utils";
+import {
+  GC_TIME_INFINITE_MS,
+  STALE_POST_LIST_MS,
+} from "@/lib/query-cache";
 import { api } from "@/trpc/react";
 
 // 서버 listInfinite 한 번에 가져올 행 수(커서 페이지 크기)
@@ -27,6 +31,8 @@ export function PostListClient() {
   const [data, query] = api.post.listInfinite.useSuspenseInfiniteQuery(
     { limit: PAGE_SIZE },
     {
+      staleTime: STALE_POST_LIST_MS,
+      gcTime: GC_TIME_INFINITE_MS,
       // 다음 요청에 넣을 커서; 없으면 TanStack Query가 더 불러오지 않음
       getNextPageParam: (last) => last.nextCursor ?? undefined,
     },

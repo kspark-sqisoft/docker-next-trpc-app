@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { uploadAvatar } from "@/lib/auth-api";
 import type { AppRouter } from "@/server/trpc/root";
+import { STALE_AUTH_ME_MS } from "@/lib/query-cache";
 import { api } from "@/trpc/react";
 
 type AuthMe = inferRouterOutputs<AppRouter>["auth"]["me"];
@@ -86,7 +87,9 @@ function ProfileNameForm({
 function ProfileInner() {
   const { update } = useSession();
   const utils = api.useUtils();
-  const [me] = api.auth.me.useSuspenseQuery();
+  const [me] = api.auth.me.useSuspenseQuery(undefined, {
+    staleTime: STALE_AUTH_ME_MS,
+  });
   const updateNameMut = api.auth.updateName.useMutation({
     onSuccess: async (user) => {
       await utils.auth.me.invalidate();

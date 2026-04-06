@@ -9,6 +9,11 @@ import { httpBatchLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import { useState } from "react";
 import superjson from "superjson";
+import {
+  GC_TIME_DEFAULT_MS,
+  queryRetry,
+  STALE_DEFAULT_MS,
+} from "@/lib/query-cache";
 import type { AppRouter } from "@/server/trpc/root";
 
 export const api = createTRPCReact<AppRouter>();
@@ -39,8 +44,14 @@ export function TrpcProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // 이 시간 동안은 자동 재요청 전까지 신선한 데이터로 간주
-            staleTime: 30_000,
+            staleTime: STALE_DEFAULT_MS,
+            gcTime: GC_TIME_DEFAULT_MS,
+            refetchOnWindowFocus: true,
+            refetchOnReconnect: true,
+            retry: queryRetry,
+          },
+          mutations: {
+            retry: false,
           },
         },
       }),

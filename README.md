@@ -20,6 +20,7 @@ Next.js 16(App Router) + **React 19**, **NextAuth.js**, **tRPC 11**, **Drizzle O
 10. [프로젝트 구조](#10-프로젝트-구조)
 11. [브라우저에서 세션 쿠키 확인](#11-브라우저에서-세션-쿠키-확인)
 12. [tRPC 주소 설정과 사용](#12-trpc-주소-설정과-사용)
+13. [캐시 전략 (TanStack Query + tRPC HTTP)](#13-캐시-전략-tanstack-query--trpc-http)
 
 ---
 
@@ -247,6 +248,12 @@ const handler = (req: Request) =>
     req,
     router: appRouter,
     createContext: createTRPCContext,
+    responseMeta() {
+      const headers = new Headers();
+      headers.set("Cache-Control", "private, no-store, must-revalidate");
+      headers.set("Vary", "Cookie");
+      return { headers };
+    },
   });
 
 export { handler as GET, handler as POST };
@@ -328,6 +335,66 @@ const updateName = api.auth.updateName.useMutation({
 
 - **`credentials: "include"`** 가 링크에 걸려 있어 **NextAuth 세션 쿠키**가 tRPC 요청에 실린다.
 - **`superjson`** 으로 `Date` 등 직렬화가 맞춰져 있다.
+
+---
+
+## 13. 캐시 전략 (TanStack Query + tRPC HTTP)
+
+데이터 신선도는 **브라우저 메모리의 TanStack Query 캐시**가 1차이고, **`/api/trpc` 응답 헤더**는 공유 캐시(프록시·CDN)가 이 API를 잘못 저장하지 않도록 2차 방어선으로 둔다. 실제 “최신 반영”은 **뮤테이션 성공 후 `utils.*.invalidate()`** 로 필요한 키만 무효화하는 패턴과 맞물린다.
+
+### 13.1 관련 파일
+
+| 파일 | 역할 |
+|------|------|
+| `src/lib/query-cache.ts` | `staleTime` / `gcTime` 상수, 쿼리 `retry` 판별(`queryRetry`) |
+| `src/trpc/react.tsx` | `QueryClient` 기본 옵션, `httpBatchLink` |
+| `src/app/api/trpc/[trpc]/route.ts` | `responseMeta` 로 HTTP 캐시 관련 헤더 |
+
+### 13.2 TanStack Query 기본값 (`TrpcProvider`)
+
+| 옵션 | 값 | 의미 |
+|------|-----|------|
+| `staleTime` | `60_000` ms (1분) | 이 시간 동안은 데이터를 “신선”으로 간주. **창 포커스·재연결 시** 자동 재요청은 **stale일 때만** 일어난다. |
+| `gcTime` | `15 * 60_000` ms (15분) | 구독이 모두 끊긴 뒤 캐시 엔트리를 메모리에 유지하는 시간. |
+| `refetchOnWindowFocus` | `true` | 탭 복귀 시 stale이면 refetch (기본 신선도와 조합). |
+| `refetchOnReconnect` | `true` | 오프라인 후 복귀 시 stale이면 refetch. |
+| `queries.retry` | `queryRetry` | 아래 13.4 참고. |
+| `mutations.retry` | `false` | 제출·삭제 등은 실패 시 자동 재시도하지 않음(이중 처리 방지). |
+
+### 13.3 화면별 덮어쓰기 (상수는 `query-cache.ts`)
+
+| 쿼리 | `staleTime` | `gcTime` | 비고 |
+|------|-------------|----------|------|
+| `post.listInfinite` | 60초 | 30분 | 무한 스크롤 누적 페이지를 뒤로가기 등에서 오래 보존. 새 글·삭제 등은 `listInfinite.invalidate()` 로 갱신. |
+| `post.byId` | 2분 | (기본 15분) | 상세·수정 화면. 수정 성공 시 `byId`·목록 invalidate 사용. |
+| `auth.me` | 60초 | (기본) | 프로필. 이름 저장·아바타 후 `auth.me.invalidate()` + `update()` 로 세션과 맞춤. |
+
+상수 이름: `STALE_POST_LIST_MS`, `STALE_POST_DETAIL_MS`, `STALE_AUTH_ME_MS`, `GC_TIME_INFINITE_MS` 등.
+
+### 13.4 쿼리 재시도 (`queryRetry`)
+
+- **최대 2번**까지(0·1차 실패 후) 재시도 여부를 판단한다.
+- **tRPC 클라이언트 오류**이면서 다음에 해당하면 **재시도하지 않음**:
+  - HTTP 상태: `400`, `401`, `403`, `404`, `409`, `422`
+  - 코드: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `BAD_REQUEST`, `CONFLICT`, `PRECONDITION_FAILED`
+- 그 외(네트워크 단절, 5xx 등)는 제한적으로 재시도해 일시 장애를 흡수한다.
+
+### 13.5 tRPC HTTP 응답 (`responseMeta`)
+
+`httpBatchLink`는 **`credentials: "include"`** 로 쿠키를 보내고, 한 배치에 여러 프로시저가 섞일 수 있어 **공유 캐시에 저장되면 사용자 간 데이터가 섞일 위험**이 있다. 그래서 모든 tRPC 응답에 대략 다음을 붙인다.
+
+- **`Cache-Control: private, no-store, must-revalidate`** — 중간 캐시·브라우저가 응답 본문을 오래 저장하지 않도록.
+- **`Vary: Cookie`** — 쿠키가 다른 요청과 응답을 섞어 쓰지 않도록 힌트.
+
+“진짜 캐시”는 **TanStack Query의 메모리**와 **앱에서 호출하는 `invalidate`** 에 두고, HTTP 레이어는 **안전한 비저장**에 가깝게 유지하는 구성이다.
+
+### 13.6 NextAuth 세션과의 관계
+
+`SessionProvider`에 **`refetchOnWindowFocus`** 가 켜져 있어, 탭 복귀 시 JWT 세션을 다시 확인한다. 게시글·프로필의 tRPC 캐시 정책과는 별층이지만, 로그인 상태 표시와 함께 쓰일 때 동작이 겹치지 않도록 **역할을 나눈 것**(세션 vs 서버에서 읽은 DB 데이터)으로 이해하면 된다.
+
+### 13.7 정적 업로드 파일
+
+게시글 이미지 등 **`GET /uploads/...`** 는 tRPC가 아니라 별도 라우트에서 강한 캐시 헤더를 줄 수 있다. 게시판 본문·목록의 JSON은 `/api/trpc`이고, 바이너리 정적 파일과 캐시 특성이 다르다는 점만 구분하면 된다.
 
 ---
 
