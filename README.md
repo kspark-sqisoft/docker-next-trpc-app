@@ -637,17 +637,90 @@ const prefetchPostDetail = useCallback(
 
 **`/todos`** 의 완료 체크는 네트워크 왕복을 기다리지 않고 **즉시 체크 상태·스타일이 바뀌도록** [React 19 `useOptimistic`](https://react.dev/reference/react/useOptimistic) 을 쓴다. TanStack Query의 `onMutate` 로 캐시를 직접 패치하는 방식과 **역할이 비슷**하지만, 여기서는 **React가 제공하는 낙관적 레이어**에 맡긴 예시다.
 
+#### 코드 조각 — `useOptimistic`과 목록 소스
+
+쿼리로 받은 `todos`를 **패스스루(기준 상태)** 로 두고, `reducer`는 **불변**으로 해당 행의 `completed` 만 갈다. 화면에는 `optimisticTodos`만 쓴다.
+
+```tsx
+// src/app/todos/todo-list-client.tsx (발췌)
+import type { inferRouterOutputs } from "@trpc/server";
+import { useOptimistic, startTransition } from "react";
+import type { AppRouter } from "@/server/trpc/root";
+import { api } from "@/trpc/react";
+
+type TodoRow = inferRouterOutputs<AppRouter>["todo"]["list"][number];
+type ToggleOptimistic = { id: string; completed: boolean };
+
+const [todos] = api.todo.list.useSuspenseQuery(undefined, {
+  staleTime: STALE_TODO_LIST_MS,
+  gcTime: GC_TIME_INFINITE_MS,
+});
+
+const [optimisticTodos, setOptimisticCompleted] = useOptimistic(
+  todos,
+  (current: TodoRow[], action: ToggleOptimistic): TodoRow[] =>
+    current.map((t) =>
+      t.id === action.id ? { ...t, completed: action.completed } : t,
+    ),
+);
+```
+
+#### 코드 조각 — 뮤테이션과 캐시 동기화
+
+서버 응답 후 **`todo.list.invalidate()`** 로 TanStack 캐시를 갱신하면 `todos` 참조가 바뀌고, `useOptimistic`의 기준값이 따라가 **낙관적 오버레이가 정리**된다. 실패 시에도 같은 `invalidate`로 서버 기준으로 되돌린다.
+
+```tsx
+// src/app/todos/todo-list-client.tsx (발췌)
+const utils = api.useUtils();
+
+const toggleMut = api.todo.toggleCompleted.useMutation({
+  onSuccess: async () => {
+    await utils.todo.list.invalidate();
+  },
+  onError: async () => {
+    await utils.todo.list.invalidate();
+  },
+});
+```
+
+#### 코드 조각 — 체크박스: `startTransition` + `mutate`
+
+체크 직후 **UI는 transition 안의 낙관적 업데이트**로 반영하고, 곧바로 tRPC 뮤테이션을 보낸다.
+
+```tsx
+// src/app/todos/todo-list-client.tsx (발췌)
+<input
+  type="checkbox"
+  checked={todo.completed}
+  disabled={toggleMut.isPending && toggleMut.variables?.id === todo.id}
+  onChange={() => {
+    const next = !todo.completed;
+    startTransition(() => {
+      setOptimisticCompleted({ id: todo.id, completed: next });
+    });
+    toggleMut.mutate({ id: todo.id });
+  }}
+/>
+```
+
+리스트 전체는 **`optimisticTodos.map(...)`** 으로 렌더한다(빈 목록 여부도 동일).
+
+#### 요약
+
 | 항목 | 내용 |
 |------|------|
 | **파일** | `src/app/todos/todo-list-client.tsx` |
-| **기준 데이터** | `api.todo.list.useSuspenseQuery` 가 돌려준 `todos` 배열을 `useOptimistic` 의 첫 인자(패스스루)로 넘긴다. |
-| **낙관적 상태** | `[optimisticTodos, setOptimisticCompleted] = useOptimistic(todos, reducer)` — `reducer`에서 해당 `id`의 `completed` 만 바꾼 **새 배열**을 반환한다. |
-| **전환** | 체크 시 `startTransition(() => setOptimisticCompleted({ id, completed: next }))` 로 낙관적 업데이트를 **transition** 안에서 적용한다. |
-| **서버와 맞추기** | 이어서 `todo.toggleCompleted` 뮤테이션을 호출한다. **성공 시** 기존처럼 `todo.list.invalidate()` 로 서버 데이터와 동기화하면, 쿼리 캐시가 갱신될 때 `todos` 가 바뀌고 `useOptimistic` 의 기준값도 따라가 **낙관적 오버레이가 자연스럽게 정리**된다. |
-| **실패 시** | `onError`에서도 `todo.list.invalidate()` 를 호출해 **서버 기준으로 다시 불러오면** 잘못된 낙관적 표시가 되돌아간다. |
-| **타입** | `inferRouterOutputs<AppRouter>["todo"]["list"][number]` 로 행 타입만 추려 **`import type`** 만 클라이언트에 남기도록 했다. |
+| **기준 데이터** | `api.todo.list.useSuspenseQuery` → `useOptimistic` 첫 인자 |
+| **낙관적 반영** | `startTransition` + `setOptimisticCompleted({ id, completed })` |
+| **서버 확정** | `todo.toggleCompleted` 후 `invalidate` (성공·실패 모두) |
+| **타입** | `inferRouterOutputs<AppRouter>["todo"]["list"][number]` — **`import type`** 만 번들에 남김 |
 
-같은 화면에서 **목록 정렬**은 `completed` 가 아니라 **`createdAt`(및 `id`)만** 쓰도록 서비스 레이어에 두어, 체크해도 항목 순서가 바뀌지 않는다(`src/server/services/todos.ts`).
+같은 화면에서 **목록 정렬**은 `completed` 가 아니라 **`createdAt`(및 `id`)만** 쓰도록 서비스 레이어에 두어, 낙관적 UI로 `completed` 가 바뀌어도 **행 순서가 튀지 않는다**.
+
+```typescript
+// src/server/services/todos.ts (발췌)
+orderBy: [desc(todos.createdAt), desc(todos.id)],
+```
 
 ---
 
