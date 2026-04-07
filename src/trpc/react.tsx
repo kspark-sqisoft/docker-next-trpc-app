@@ -1,8 +1,40 @@
 "use client";
 
 /**
- * 브라우저: TanStack Query + tRPC React 훅(api.post.list.useSuspenseQuery 등).
- * URL·쿠키(superjson) 설정이 서버 렌더링 시에도 동작하도록 getBaseUrl 을 둔다.
+ * 브라우저(클라이언트 컴포넌트)에서 쓰는 **tRPC + TanStack Query** 진입점.
+ * 공식 가이드의 `trpc/client.tsx` + `trpc/query-client.ts` 역할을 한 파일에 둔 형태에 가깝다.
+ *
+ * @see https://trpc.io/docs/client/nextjs/app-router-setup
+ *
+ * ## 구성 요소와 역할
+ *
+ * 1. **`createTRPCReact<AppRouter>()`**
+ *    - 서버의 `AppRouter` **타입만** 가져와 React 훅 팩토리 `api` 를 만든다.
+ *    - 가이드 최신 예는 `createTRPCContext` + `useTRPC()` + `queryOptions` 조합이지만,
+ *      `api.post.byId.useSuspenseQuery` 패턴도 동일하게 지원된다.
+ *
+ * 2. **`QueryClient`**
+ *    - TanStack Query의 **서버 상태 캐시** 본체. staleTime, gcTime, retry 등은 여기서 기본값.
+ *    - tRPC 훅은 내부적으로 이 클라이언트에 쿼리 키·데이터를 저장한다.
+ *
+ * 3. **`api.createClient({ links: [httpBatchLink(...)] })`**
+ *    - 실제 HTTP를 날리는 **tRPC 클라이언트**. `httpBatchLink`가 여러 호출을 한 요청으로 묶는다.
+ *    - `transformer: superjson` 은 서버 `initTRPC` 와 반드시 짝을 맞춘다.
+ *
+ * 4. **`getBaseUrl()`**
+ *    - 브라우저: 상대 경로 `""` → 같은 origin 의 `/api/trpc`.
+ *    - 서버(RSC 등): `VERCEL_URL` / `NEXT_PUBLIC_APP_URL` 로 **절대 URL** (fetch에 필요).
+ *
+ * 5. **`TrpcProvider`**
+ *    - `api.Provider` 에 tRPC 클라이언트 + **같은** `queryClient` 를 넘긴다.
+ *    - 자식에 `QueryClientProvider` 로 동일 인스턴스를 또 감싸, 모든 훅이 한 캐시를 본다.
+ *
+ * 6. **`dehydrate.serializeData` / `hydrate.deserializeData`**
+ *    - RSC에서 `createServerSideHelpers().dehydrate()` 한 스냅샷을 클라이언트로 넘길 때
+ *      `Date` 등이 깨지지 않도록 superjson으로 직렬화한다.
+ *
+ * ## 마운트 위치
+ * `AppProviders` (`components/providers.tsx`) 안에서 `SessionProvider` 다음에 감싼다.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
@@ -32,12 +64,12 @@ function getBaseUrl() {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://127.0.0.1:3000";
 }
 
+/** tRPC 클라이언트가 쓸 링크: 배치 URL + superjson + 세션 쿠키 + (학습용) HTTP 로그 */
 function trpcLinks() {
   return [
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      // NextAuth 세션 쿠키를 tRPC 요청에 실어 보냄 + 요청/응답·status 로그
       async fetch(url, opts) {
         const id = nextHttpLogId();
         const merged: RequestInit = { ...opts, credentials: "include" };
@@ -85,8 +117,6 @@ export function TrpcProvider({ children }: { children: React.ReactNode }) {
           mutations: {
             retry: false,
           },
-          // RSC `createServerSideHelpers().dehydrate()` + HydrationBoundary 와 `Date` 등 타입을 맞춤
-          // @see https://trpc.io/docs/client/tanstack-react-query/server-components
           dehydrate: {
             serializeData: superjson.serialize,
           },
@@ -96,7 +126,6 @@ export function TrpcProvider({ children }: { children: React.ReactNode }) {
         },
       }),
   );
-  // 링크·배치 설정은 마운트 시 한 번만 생성
   const [trpcClient] = useState(() =>
     api.createClient({
       links: trpcLinks(),

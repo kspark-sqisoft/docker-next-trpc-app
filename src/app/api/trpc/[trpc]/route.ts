@@ -1,5 +1,23 @@
 /**
- * tRPC HTTP 어댑터: /api/trpc 로 들어온 GET·POST 를 appRouter 로 넘긴다.
+ * tRPC HTTP 엔드포인트 — Next.js App Router 의 **Route Handler**.
+ *
+ * ## 왜 `fetchRequestHandler` 인가
+ * App Router는 Node의 `IncomingMessage` 대신 Web 표준 **`Request` / `Response`** 를 쓴다.
+ * 그래서 Pages Router 시절 어댑터가 아니라 `@trpc/server/adapters/fetch` 의
+ * **`fetchRequestHandler`** 로 `appRouter` 에 연결한다.
+ * @see https://trpc.io/docs/client/nextjs/app-router-setup
+ *
+ * ## 한 요청의 흐름
+ * 1. 브라우저(또는 서버 측 fetch)가 `GET|POST /api/trpc/...` 로 배치 요청.
+ * 2. Next가 이 파일의 `GET`/`POST` 로 `Request` 를 넘김.
+ * 3. `fetchRequestHandler` 가 `createContext: createTRPCContext` 로 **ctx** 생성.
+ * 4. `router: appRouter` 에서 프로시저 실행 → `Response` 반환.
+ * 5. (학습용) `after()` 로 터미널에 쿼리/본문 **풀이 로그** 출력.
+ *
+ * ## 인자 정리
+ * - `endpoint: "/api/trpc"` — 클라이언트 `httpBatchLink` 의 path 와 일치해야 함.
+ * - `createContext` — **동기/비동기** 모두 가능; 여기서는 세션 로드를 위해 async.
+ * - `responseMeta` — 응답 헤더(Cache-Control 등). 쿠키 기반이라 공유 캐시에 싣지 않게 함.
  */
 import { after } from "next/server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
@@ -11,7 +29,6 @@ import {
 import { createTRPCContext } from "@/server/trpc/context";
 import { appRouter } from "@/server/trpc/root";
 
-// App Router 가 넘기는 표준 Request 로 배치·스트리밍 처리
 const handler = async (req: Request) => {
   const method = (req.method || "GET").toUpperCase();
   const postSnapshot =
@@ -22,7 +39,6 @@ const handler = async (req: Request) => {
     req,
     router: appRouter,
     createContext: createTRPCContext,
-    // 쿠키·세션 기반 배치이므로 공유 캐시에 저장되면 안 됨. 브라우저·CDN 힌트만 명시.
     responseMeta() {
       const headers = new Headers();
       headers.set("Cache-Control", "private, no-store, must-revalidate");

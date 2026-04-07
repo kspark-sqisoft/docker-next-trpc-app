@@ -1,7 +1,10 @@
 /**
- * 게시글 도메인 라우터.
- * - list / byId: 공개
- * - create / update / delete: 로그인 필요(protected), 서비스 레이어에서 작성자 검증
+ * 게시글 도메인 **서브 라우터** — `root.ts` 에서 `post: postRouter` 로 붙는다.
+ *
+ * - `publicProcedure` / `protectedProcedure` 는 `../trpc.ts` 의 `initTRPC` 결과에서 온다.
+ * - 각 `.query` / `.mutation` 이 하나의 **프로시저**이며, 클라이언트에서는 `api.post.*` 로 호출된다.
+ *
+ * @see https://trpc.io/docs/client/nextjs/app-router-setup
  */
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";

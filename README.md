@@ -85,7 +85,7 @@ Next.js 16(App Router) + **React 19**, **NextAuth.js**, **tRPC 11**, **Drizzle O
 9. [주요 요청 흐름](#9-주요-요청-흐름)
 10. [프로젝트 구조](#10-프로젝트-구조)
 11. [브라우저에서 세션 쿠키 확인](#11-브라우저에서-세션-쿠키-확인)
-12. [tRPC 주소 설정과 사용](#12-trpc-주소-설정과-사용)
+12. [tRPC 주소 설정과 사용](#12-trpc-주소-설정과-사용) · [12.0 개념·순서·용어](#trpc-app-router-개념-순서)
 13. [캐시 전략 (TanStack Query + tRPC HTTP)](#13-캐시-전략-tanstack-query--trpc-http) · [13.6 Prefetch·HydrationBoundary](#136-게시판-목록-서버-프리패치와-hydrationboundary) · [13.9 할 일 useOptimistic](#139-할-일-목록과-react-19-useoptimistic-낙관적-ui)
 14. [tRPC를 쓰는 이유와 대안과의 차이](#14-trpc를-쓰는-이유와-대안과의-차이) · [14.2 Zod 검증](#142-zod-검증)
 15. [`export const dynamic = "force-dynamic"`](#15-export-const-dynamic--force-dynamic)
@@ -437,17 +437,141 @@ src/
 
 ## 12. tRPC 주소 설정과 사용
 
+공식 **Next.js App Router 설정** 가이드: [Set up with Next.js App Router](https://trpc.io/docs/client/nextjs/app-router-setup). 아래는 그 흐름을 **용어·역할·순서**로 정리하고, **이 저장소의 파일**이 어디에 대응하는지까지 맞춘 것이다.
+
+<a id="trpc-app-router-개념-순서"></a>
+
+### 12.0 App Router에 tRPC를 얹을 때: 개념 순서와 용어
+
+#### 12.0.1 전체 파이프라인 (요청 한 번이 지나가는 순서)
+
+1. **브라우저(또는 RSC에서의 fetch)**  
+   `httpBatchLink`가 `GET`/`POST` **`/api/trpc/...`** 로 배치 요청을 보낸다. 이 프로젝트는 **`credentials: "include"`** 로 NextAuth 세션 쿠키를 같이 보낸다.
+
+2. **Route Handler** (`app/api/trpc/[trpc]/route.ts`)  
+   Next가 넘기는 표준 **`Request`** 를 **`fetchRequestHandler`** 에 넘긴다. App Router는 Web 표준 Request/Response를 쓰므로 [Pages Router용 어댑터가 아니라 fetch 어댑터](https://trpc.io/docs/client/nextjs/app-router-setup)를 쓰는 것이 맞다.
+
+3. **컨텍스트 생성** (`createTRPCContext`)  
+   **요청마다 한 번** 호출된다. 세션 쿠키 → DB 사용자 등 **이 요청의 `ctx`** 를 채운다. 이후 모든 프로시저는 이 `ctx`를 본다.
+
+4. **라우터 디스패치** (`appRouter`)  
+   URL 경로·배치 인덱스에 따라 `post.listInfinite`, `auth.me` 같은 **프로시저**가 실행된다. 입력은 Zod 등으로 검증된다.
+
+5. **응답**  
+   superjson 등 **transformer**로 직렬화된 JSON이 `Response`로 돌아간다. 클라이언트의 **TanStack Query**가 캐시에 넣고, 훅이 데이터를 반영한다.
+
+#### 12.0.2 핵심 API · 함수가 하는 일
+
+| 이름 | 하는 일 (역할) |
+|------|------------------|
+| **`initTRPC`** | `@trpc/server`의 진입점. **컨텍스트 타입**을 붙인 뒤 `.create({ transformer, errorFormatter, … })`로 **t 인스턴스**를 만든다. 여기서 나온 **`t.router` / `t.procedure`** 로만 라우터를 정의하는 것이 관례다. |
+| **`createTRPCContext`** | (가이드에서는 보통 `{ headers }`를 인자로 받기도 함) **한 HTTP 요청당 한 번** 실행되는 비동기 함수. 반환값이 **`ctx`** 가 되며, `protectedProcedure` 같은 미들웨어가 여기서 채운 `ctx.user` 등을 검사한다. |
+| **`router({ … })`** | 도메인별 서브라우터(`postRouter`, `authTrpcRouter`…)를 **트리로 합쳐** 최종 **`appRouter`** 를 만든다. 클라이언트의 `api.post.*` / `api.auth.*` 타입의 근원이다. |
+| **`publicProcedure` / `protectedProcedure`** | `t.procedure`에 가깝게, 인증 필요 여부만 나눈 **프로시저 빌더**. `protectedProcedure`는 `ctx.user` 없으면 `UNAUTHORIZED`를 던진다. |
+| **`fetchRequestHandler`** | **`@trpc/server/adapters/fetch`**. Web **`Request`** → 내부적으로 컨텍스트 생성·라우터 실행 → **`Response`**. `endpoint`, `router`, `createContext`를 넘긴다. |
+| **`QueryClient`** | **TanStack React Query**의 캐시·재시도·staleTime 등을 관리하는 객체. tRPC React 훅은 결국 이 캐시에 쿼리 키로 결과를 저장한다. |
+| **`createTRPCReact<AppRouter>()`** | `AppRouter` **타입만** 서버에서 import해, 클라이언트에 **`api`** 훅 팩토리를 만든다. `api.post.byId.useSuspenseQuery` 같은 API의 출처다. |
+| **`httpBatchLink`** | 여러 프로시저 호출을 **한 HTTP 요청으로 묶는** tRPC 클라이언트 링크. `url`, `transformer`, (선택) 커스텀 `fetch`를 설정한다. |
+| **`superjson`** | **Data transformer** — `Date` 등 JSON만으로 깨지는 타입을 왕복 직렬화한다. 서버 `initTRPC.create`와 클라이언트 `httpBatchLink`·**dehydrate/hydrate**에 같이 맞춰야 한다. |
+
+#### 12.0.3 공식 문서 권장 구조 ↔ 이 저장소 파일
+
+| 가이드 예시 경로 | 이 프로젝트 |
+|------------------|-------------|
+| `trpc/init.ts` (`initTRPC`, 팩토리 export) | `src/server/trpc/trpc.ts` (`initTRPC` + `router` / `publicProcedure` / `protectedProcedure`) |
+| 컨텍스트 생성 함수 | `src/server/trpc/context.ts` (`createTRPCContext`, `TRPCContext`) |
+| `trpc/routers/_app.ts` 등 | `src/server/trpc/root.ts` (`appRouter`), `routers/post.ts` · `auth-trpc.ts` · `todo.ts` |
+| `app/api/trpc/[trpc]/route.ts` | 동일 경로 — `fetchRequestHandler` + (학습용) 서버 액세스 로그 |
+| `trpc/query-client.ts` (`makeQueryClient`) | `src/trpc/react.tsx` 안에서 `useState(() => new QueryClient({…}))` 로 생성(옵션은 `src/lib/query-cache.ts` 상수와 연동) |
+| `trpc/client.tsx` (`createTRPCClient` + Provider) | `src/trpc/react.tsx` — 다만 훅은 가이드의 `createTRPCContext`/`useTRPC` 대신 **`createTRPCReact`** + `api.*` 패턴([Classic React Query 통합](https://trpc.io/docs/client/react)에 가깝다). 동작은 동일 계열이다. |
+| `trpc/server.tsx` (`createTRPCOptionsProxy`, `getQueryClient`) | **필수는 아님.** 이 레포는 게시판 목록만 `createServerSideHelpers` 기반으로 프리패치한다 → `src/server/trpc/prefetch-post-list.ts` + `TrpcDehydratedStateBoundary` ([§13.6](#136-게시판-목록-서버-프리패치와-hydrationboundary)). |
+
+가이드의 최신 패턴(`createTRPCOptionsProxy`, 클라이언트에서 `useTRPC()` + `queryOptions`)으로 옮기면 RSC·프리패치 코드가 한 스타일로 정리되기 쉽다. 현재 구조는 **`createTRPCReact` + `api.post.*.useSuspenseQuery`** 로도 공식적으로 지원되는 조합이며, 학습·가독성을 위해 유지한 것으로 보면 된다.
+
+#### 12.0.4 `QueryClient`와 tRPC를 같이 쓰는 이유
+
+- **tRPC**는 “어떤 프로시저를 호출하고 타입을 맞출지”를 담당한다.
+- **TanStack Query**는 “언제 다시 가져올지(stale), 캐시 키, Suspense, 무한 쿼리 페이지 병합”을 담당한다.
+- `TrpcProvider`는 **`api.Provider`**(tRPC 클라이언트)와 **`QueryClientProvider`**(같은 `QueryClient` 인스턴스)를 **같은 트리**에 올려, 훅이 동일 캐시를 보도록 한다.
+
+#### 12.0.5 전체 파이프라인 도표
+
+아래는 **브라우저에서 프로시저를 호출할 때** 데이터가 오가는 경로다. (파일 경로는 이 저장소 기준.)
+
+```mermaid
+flowchart TB
+  subgraph client ["클라이언트 (src/trpc/react.tsx)"]
+    UI["UI: api.post.*.useSuspenseQuery 등"]
+    QC["QueryClient\n캐시 stale Suspense"]
+    TClient["tRPC 클라이언트\ncreateClient + links"]
+    HBL["httpBatchLink\nsuperjson + fetch"]
+    UI --> QC
+    UI --> TClient
+    TClient --> HBL
+    QC --> UI
+  end
+
+  HBL -->|"GET POST /api/trpc\n세션 쿠키"| HTTP["HTTP"]
+
+  subgraph next ["Next 서버"]
+    HTTP --> RH["route.ts\nfetchRequestHandler"]
+    RH --> CTX["createTRPCContext\ncontext.ts"]
+    CTX --> AR["appRouter\nroot.ts"]
+    AR --> PR["서브 라우터\npost auth todo"]
+    PR --> P["프로시저\npublic protected"]
+    P --> MW{"미들웨어\nctx.user"}
+    MW --> SVC["services\nDrizzle DB"]
+    SVC --> P
+    P --> PR
+    PR --> AR
+    AR --> RH
+    RH -->|"Response JSON superjson"| HTTP
+  end
+
+  HTTP --> HBL
+  HBL -->|"역직렬화 쿼리키"| QC
+```
+
+**게시판 목록**처럼 RSC에서 첫 페이지를 미리 넣는 경우, **같은 `appRouter`·`createTRPCContext`** 를 쓰되 HTTP를 거치지 않고 서버에서 직접 헬퍼를 돌린 뒤 스냅샷만 클라이언트로 넘긴다.
+
+```mermaid
+flowchart LR
+  subgraph rsc ["서버 컴포넌트"]
+    PG["posts/page.tsx"]
+  end
+
+  subgraph prefetch ["prefetch-post-list.ts"]
+    CTX2["createTRPCContext"]
+    SSH["createServerSideHelpers\nrouter + ctx + superjson"]
+    PI["post.listInfinite\nprefetchInfinite"]
+    DH["dehydrate()"]
+    PG --> CTX2
+    CTX2 --> SSH
+    SSH --> PI
+    PI --> DH
+  end
+
+  DH -->|"SuperJSONResult"| BND["TrpcDehydratedStateBoundary\nsuperjson → HydrationBoundary"]
+
+  subgraph client2 ["클라이언트"]
+    BND --> PLC["PostListClient\n동일 QueryClient 패턴"]
+    PLC --> MORE["추가 페이지는\nhttpBatchLink로만"]
+  end
+```
+
 ### 12.1 엔드포인트
 
 클라이언트는 **`/api/trpc`** 로 배치 요청을 보낸다. 서버는 App Router **Route Handler** 한 곳에서 `GET`/`POST` 를 받는다 (`src/app/api/trpc/[trpc]/route.ts`).
 
+핵심은 아래 네 가지다: **`fetchRequestHandler`**, **`endpoint`**, **`router: appRouter`**, **`createContext: createTRPCContext`**. 실제 파일에는 학습용 **터미널 tRPC 로그**(`after()` + `trpc-server-access-log`)와 POST 본문 스냅샷이 추가되어 있다.
+
 ```typescript
-// src/app/api/trpc/[trpc]/route.ts
+// src/app/api/trpc/[trpc]/route.ts (구조만 발췌)
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { createTRPCContext } from "@/server/trpc/context";
 import { appRouter } from "@/server/trpc/root";
 
-const handler = (req: Request) =>
+const handler = async (req: Request) =>
   fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
@@ -484,7 +608,8 @@ function trpcLinks() {
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      fetch(url, opts) {
+      // 실제 코드: credentials + 학습용 http-request-log (요청/응답 풀이)
+      async fetch(url, opts) {
         return fetch(url, { ...opts, credentials: "include" });
       },
     }),

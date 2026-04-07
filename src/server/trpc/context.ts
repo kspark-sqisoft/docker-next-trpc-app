@@ -1,6 +1,21 @@
 /**
- * tRPC 요청 컨텍스트: NextAuth 세션 쿠키 → DB에서 최신 사용자 행을 다시 읽는다.
- * (JWT에만 의존하지 않고 탈퇴·변경 반영을 맞추기 위한 패턴)
+ * tRPC 요청 컨텍스트 팩토리 — HTTP 요청 **한 번**마다 `fetchRequestHandler` 가 호출한다.
+ *
+ * ## 역할
+ * - 공식 가이드는 `createTRPCContext({ headers })` 처럼 **Headers** 를 넘겨 인증하는 예가 많다.
+ * - 이 프로젝트는 NextAuth 의 `getServerSession(authOptions)` 가 App Router 환경에서
+ *   요청 쿠키를 읽어 주므로, 별도 인자 없이 **현재 요청의 세션**을 조회한다.
+ * - 세션의 `user.id` 로 DB를 다시 읽어 `SafeUser` 만 `ctx.user` 에 넣는다
+ *   (JWT 만으로는 탈퇴·DB 변경이 반영되지 않을 수 있어서).
+ *
+ * ## 호출 위치
+ * - `app/api/trpc/[trpc]/route.ts` 의 `createContext: createTRPCContext`
+ * - RSC 프리패치: `prefetch-post-list.ts` 에서 `createServerSideHelpers({ ctx: await createTRPCContext() })`
+ *
+ * ## 반환 타입
+ * - `TRPCContext` — 라우터 전체에서 `ctx.user` 로 접근. 비로그인이면 `null`.
+ *
+ * @see https://trpc.io/docs/client/nextjs/app-router-setup (Create the API route handler · createContext)
  */
 import type { Session } from "next-auth";
 import { getServerSession } from "next-auth/next";
@@ -13,7 +28,6 @@ export type TRPCContext = {
 };
 
 export async function createTRPCContext(): Promise<TRPCContext> {
-  // App Router 요청의 세션 쿠키를 읽음
   const session = (await getServerSession(
     authOptions,
   )) as Session | null;
@@ -21,7 +35,6 @@ export async function createTRPCContext(): Promise<TRPCContext> {
     flowLog("trpc-ctx", "세션 없음 → ctx.user = null");
     return { user: null };
   }
-  // 세션의 id 로 DB 조회 → 없으면 로그아웃과 동일하게 취급
   const row = await findById(session.user.id);
   if (!row) {
     flowLog("trpc-ctx", "DB에 사용자 없음(세션만 있음) → ctx.user = null", {
@@ -30,6 +43,5 @@ export async function createTRPCContext(): Promise<TRPCContext> {
     return { user: null };
   }
   flowLog("trpc-ctx", "ctx.user 로드 완료", { userId: row.id });
-  // 비밀번호 해시 등 민감 필드 제거한 형태만 라우터에 노출
   return { user: toSafe(row) };
 }
