@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useIntersectionInfiniteScroll } from "@/hooks/use-intersection-infinite-scroll";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -46,6 +46,28 @@ export function PostListClient() {
   // pages 배열을 한 줄 목록으로 펼침(화면에는 전체 누적 글)
   // useSuspenseInfiniteQuery 는 보통 data 가 항상 있지만, hydrate/리셋 직후 등 일부 타이밍에 undefined 가 나올 수 있어 방어
   const items = (data?.pages ?? []).flatMap((p) => p.items);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    const pageCount = data?.pages?.length ?? 0;
+    console.log("[cache-debug] post.listInfinite", {
+      fetchStatus: query.fetchStatus,
+      isFetching: query.isFetching,
+      isStale: query.isStale,
+      isFetched: query.isFetched,
+      dataUpdatedAt: query.dataUpdatedAt,
+      isFetchingNextPage: query.isFetchingNextPage,
+      pageCount,
+    });
+  }, [
+    data?.pages?.length,
+    query.fetchStatus,
+    query.isFetching,
+    query.isStale,
+    query.isFetched,
+    query.dataUpdatedAt,
+    query.isFetchingNextPage,
+  ]);
 
   const onScrollFetch = useCallback(() => {
     actionLog("posts-list", "스크롤: 목록 다음 페이지 로드");

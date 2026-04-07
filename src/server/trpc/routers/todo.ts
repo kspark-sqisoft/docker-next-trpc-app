@@ -13,17 +13,29 @@ import { protectedProcedure, router } from "@/server/trpc/trpc";
 const todoIdSchema = z.uuid();
 
 export const todoRouter = router({
-  list: protectedProcedure.query(({ ctx }) => listTodosForUser(ctx.user.id)),
+  list: protectedProcedure.query(({ ctx }) => {
+    console.log("[todoRouter]프로시저 todo.list 호출");
+    return listTodosForUser(ctx.user.id);
+  }),
 
   create: protectedProcedure
     .input(z.object({ title: z.string().min(1).max(500) }))
-    .mutation(({ ctx, input }) => createTodo({ title: input.title }, ctx.user.id)),
+    .mutation(({ ctx, input }) => {
+      console.log("[todoRouter]프로시저 todo.create 호출");
+      return createTodo({ title: input.title }, ctx.user.id);
+    }),
 
   toggleCompleted: protectedProcedure
     .input(z.object({ id: todoIdSchema }))
-    .mutation(({ ctx, input }) => toggleTodoCompleted(input.id, ctx.user.id)),
+    .mutation(({ ctx, input }) => {
+      console.log("[todoRouter]프로시저 todo.toggleCompleted 호출");
+      return toggleTodoCompleted(input.id, ctx.user.id);
+    }),
 
   delete: protectedProcedure
     .input(z.object({ id: todoIdSchema }))
-    .mutation(({ ctx, input }) => removeTodo(input.id, ctx.user.id)),
+    .mutation(({ ctx, input }) => {
+      console.log("[todoRouter]프로시저 todo.delete 호출");
+      return removeTodo(input.id, ctx.user.id);
+    }),
 });

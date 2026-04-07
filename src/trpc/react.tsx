@@ -66,6 +66,7 @@ function getBaseUrl() {
 
 /** tRPC 클라이언트가 쓸 링크: 배치 URL + superjson + 세션 쿠키 + (학습용) HTTP 로그 */
 function trpcLinks() {
+  console.log(`tRPC 클라이언트에 넘겨줄 links 만듬  [배치 HTTP 전송 + superjson + 쿠키 포함(credentials: "include")]`);
   return [
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
@@ -104,8 +105,9 @@ function trpcLinks() {
 
 export function TrpcProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
-    () =>
-      new QueryClient({
+    function () {
+      console.log(`QueryClient 만듬  [기본 옵션 + superjson 직렬화/역직렬화 포함]`);
+      return new QueryClient({
         defaultOptions: {
           queries: {
             staleTime: STALE_DEFAULT_MS,
@@ -124,12 +126,15 @@ export function TrpcProvider({ children }: { children: React.ReactNode }) {
             deserializeData: superjson.deserialize,
           },
         },
-      }),
+      });
+    },
   );
-  const [trpcClient] = useState(() =>
-    api.createClient({
+  const [trpcClient] = useState(() => {
+    console.log(`tRPC 클라이언트 만듬  [trpcLinks 함수 호출]`);
+    return api.createClient({
       links: trpcLinks(),
-    }),
+    });
+  },
   );
 
   useEffect(() => {

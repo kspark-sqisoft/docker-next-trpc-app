@@ -170,7 +170,7 @@ npm run dev
 
 **HTTP 요청/응답**은 `src/lib/http-request-log.ts`에서 묶어서 남깁니다. 같은 순번 **`요청 #n` / `응답 #n`** 으로 짝을 맞출 수 있고, **`status` / `statusText` / `ok`** 와 본문 미리보기(길면 잘림)가 포함됩니다. **브라우저** DevTools에서는 `%c` 스타일로 태그(회색)·**요청(파랑)**·**응답 2xx(초록) / 4xx(주황) / 5xx(빨강)**·**fetch 실패(빨강)** 이 구분됩니다. **Node(Next 서버)** 터미널에서는 ANSI 색으로 비슷하게 구분됩니다. tRPC는 태그 **`trpc-http`**, 회원가입·업로드 REST는 **`rest-auth`**, **`rest-upload-*`** 등입니다. JSON 본문은 필드명에 `password` 등이 있으면 **`[REDACTED]`** 로 가립니다.
 
-`NODE_ENV === "development"` 일 때만 기본 출력됩니다. 프로덕션 빌드에서도 보려면 `.env`에 **`NEXT_PUBLIC_DEBUG_FLOW=1`** (`.env.example` 참고).
+`NODE_ENV === "development"` 일 때만 기본 출력됩니다. **끄려면** `.env`에 **`NEXT_PUBLIC_DEBUG_FLOW=0`**(또는 `false`)을 넣으면 dev에서도 `[flow:*]`·`[user-action:*]`·HTTP/tRPC 풀이 로그가 모두 꺼집니다. 프로덕션에서까지 켜려면 **`NEXT_PUBLIC_DEBUG_FLOW=1`** (`.env.example` 참고).
 
 ### 4.5 DB만 Docker, Next는 로컬 (`npm run dev`)
 

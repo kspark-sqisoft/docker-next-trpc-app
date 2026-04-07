@@ -17,7 +17,11 @@ import {
   removePost,
   updatePost,
 } from "@/server/services/posts";
-import { protectedProcedure, publicProcedure, router } from "@/server/trpc/trpc";
+import {
+  protectedProcedure,
+  publicProcedure,
+  router,
+} from "@/server/trpc/trpc";
 
 /** 게시글 PK — Zod 4 권장 `z.uuid()` (구 `z.string().uuid()` 대체) */
 const postIdSchema = z.uuid();
@@ -38,7 +42,10 @@ function listInfiniteLearningDelayMs(): number {
 
 export const postRouter = router({
   // 전체 목록(시드·관리용 등; UI 는 listInfinite 사용)
-  list: publicProcedure.query(() => findAllForList()),
+  list: publicProcedure.query(() => {
+    console.log("[postRouter]프로시저 post.list 호출");
+    return findAllForList();
+  }),
 
   /** 커서 기반 페이지 (무한 스크롤). cursor 는 이전 응답의 nextCursor 문자열. */
   listInfinite: publicProcedure
@@ -49,12 +56,16 @@ export const postRouter = router({
       }),
     )
     .query(async ({ input }) => {
+      console.log("[postRouter]프로시저 post.listInfinite 호출");
       const decoded =
         input.cursor != null && input.cursor !== ""
           ? decodePostListCursor(input.cursor)
           : undefined;
       if (input.cursor != null && input.cursor !== "" && decoded == null) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "잘못된 커서입니다." });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "잘못된 커서입니다.",
+        });
       }
       // 학습용: 두 번째 페이지부터 응답 전 지연
       if (decoded != null) {
@@ -67,13 +78,19 @@ export const postRouter = router({
     }),
 
   /** 단건: 없으면 NOT_FOUND */
-  byId: publicProcedure.input(z.object({ id: postIdSchema })).query(async ({ input }) => {
-    const post = await findOne(input.id);
-    if (!post) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "글을 찾을 수 없습니다." });
-    }
-    return post;
-  }),
+  byId: publicProcedure
+    .input(z.object({ id: postIdSchema }))
+    .query(async ({ input }) => {
+      console.log("[postRouter]프로시저 post.byId 호출");
+      const post = await findOne(input.id);
+      if (!post) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "글을 찾을 수 없습니다.",
+        });
+      }
+      return post;
+    }),
 
   // ctx.user.id 를 authorId 로 저장
   create: protectedProcedure
@@ -84,16 +101,17 @@ export const postRouter = router({
         imageUrls: z.array(z.string()).max(5).optional(),
       }),
     )
-    .mutation(({ ctx, input }) =>
-      createPost(
+    .mutation(({ ctx, input }) => {
+      console.log("[postRouter]프로시저 post.create 호출");
+      return createPost(
         {
           title: input.title,
           content: input.content,
           imageUrls: input.imageUrls,
         },
         ctx.user.id,
-      ),
-    ),
+      );
+    }),
 
   update: protectedProcedure
     .input(
@@ -104,8 +122,9 @@ export const postRouter = router({
         imageUrls: z.array(z.string()).max(5).optional(),
       }),
     )
-    .mutation(({ ctx, input }) =>
-      updatePost(
+    .mutation(({ ctx, input }) => {
+      console.log("[postRouter]프로시저 post.update 호출");
+      return updatePost(
         input.id,
         {
           title: input.title,
@@ -113,11 +132,14 @@ export const postRouter = router({
           imageUrls: input.imageUrls,
         },
         ctx.user.id,
-      ),
-    ),
+      );
+    }),
 
   // 첨부 파일 디스크 삭제 포함
   delete: protectedProcedure
     .input(z.object({ id: postIdSchema }))
-    .mutation(({ ctx, input }) => removePost(input.id, ctx.user.id)),
+    .mutation(({ ctx, input }) => {
+      console.log("[postRouter]프로시저 post.delete 호출");
+      return removePost(input.id, ctx.user.id);
+    }),
 });

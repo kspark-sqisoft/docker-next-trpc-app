@@ -30,6 +30,9 @@ import { createTRPCContext } from "@/server/trpc/context";
 import { appRouter } from "@/server/trpc/root";
 
 const handler = async (req: Request) => {
+  console.log(
+    `handler req.method: ${req.method} req.url: ${req.url} Next가 넘기는 표준 Request 를 fetchRequestHandler 에 넘긴다`,
+  );
   const method = (req.method || "GET").toUpperCase();
   const postSnapshot =
     method === "POST" ? await captureTrpcServerPostLogSnapshot(req) : null;

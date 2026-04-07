@@ -2,7 +2,13 @@
 
 import { Trash2 } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
-import { useCallback, useOptimistic, useState, startTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useOptimistic,
+  useState,
+  startTransition,
+} from "react";
 import type { AppRouter } from "@/server/trpc/root";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,10 +32,28 @@ export function TodoListClient() {
   const [title, setTitle] = useState("");
   const utils = api.useUtils();
 
-  const [todos] = api.todo.list.useSuspenseQuery(undefined, {
+  const [todos, todoListQuery] = api.todo.list.useSuspenseQuery(undefined, {
     staleTime: STALE_TODO_LIST_MS,
     gcTime: GC_TIME_INFINITE_MS,
   });
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    // TanStack Query는 "캐시 히트" 플래그를 주지 않음 → 아래 값으로 네트워크 재요청 여부를 추론
+    console.log("[cache-debug] todo.list", {
+      fetchStatus: todoListQuery.fetchStatus,
+      isFetching: todoListQuery.isFetching,
+      isStale: todoListQuery.isStale,
+      isFetched: todoListQuery.isFetched,
+      dataUpdatedAt: todoListQuery.dataUpdatedAt,
+    });
+  }, [
+    todoListQuery.fetchStatus,
+    todoListQuery.isFetching,
+    todoListQuery.isStale,
+    todoListQuery.isFetched,
+    todoListQuery.dataUpdatedAt,
+  ]);
 
   const [optimisticTodos, setOptimisticCompleted] = useOptimistic(
     todos,

@@ -1,10 +1,13 @@
 /**
  * 학습용: 브라우저·서버 콘솔에서 요청·UI 흐름을 따라가기 위한 로그.
  * - 기본: NODE_ENV === "development" 일 때만 출력
- * - 강제: NEXT_PUBLIC_DEBUG_FLOW=1 이면 프로덕션 빌드에서도 클라이언트 출력
+ * - 끄기: NEXT_PUBLIC_DEBUG_FLOW=0 (또는 false) — dev에서도 flowLog·actionLog·http-request-log·trpc.server 로그 전부 비활성
+ * - 켜기(강제): NEXT_PUBLIC_DEBUG_FLOW=1 — production 빌드에서도 출력
  */
 export function isFlowLogEnabled(): boolean {
-  if (process.env.NEXT_PUBLIC_DEBUG_FLOW === "1") return true;
+  const flag = process.env.NEXT_PUBLIC_DEBUG_FLOW;
+  if (flag === "0" || flag === "false") return false;
+  if (flag === "1") return true;
   return process.env.NODE_ENV === "development";
 }
 

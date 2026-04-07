@@ -28,9 +28,10 @@ export type TRPCContext = {
 };
 
 export async function createTRPCContext(): Promise<TRPCContext> {
-  const session = (await getServerSession(
-    authOptions,
-  )) as Session | null;
+  const session = (await getServerSession(authOptions)) as Session | null;
+  console.log(
+    `createTRPCContext 호출  [세션 조회] session: ${JSON.stringify(session)}`,
+  );
   if (!session?.user?.id) {
     flowLog("trpc-ctx", "세션 없음 → ctx.user = null");
     return { user: null };
